@@ -211,6 +211,20 @@
       </div>
     </section>
 
+    <section class="settings-section">
+      <h3>Updates</h3>
+      <div class="upd-row">
+        <span class="upd-row-label">Installed</span>
+        <span class="ver-chip" id="updCurChip">…</span>
+        <span class="upd-arrow hidden" id="updArrow">→</span>
+        <span class="ver-chip ver-chip-new hidden" id="updLatestChip">…</span>
+      </div>
+      <p class="hint" id="updStatus">FictionHub checks for updates automatically when the app starts. You can also check manually.</p>
+      <div class="settings-actions">
+        <button class="btn btn-ghost" id="updCheckBtn" onclick="updCheck(true)">Check for updates</button>
+      </div>
+    </section>
+
     <button class="save" onclick="saveSettingsView()">Save</button>
   </div>
 
@@ -249,11 +263,17 @@
     </div>
   </div>
 
+  <!-- In-app auto-update window: rendered by update-ui.js -->
+  <div id="updateModal" class="modal upd-modal hidden">
+    <div class="modal-inner upd-modal-inner" id="updModalInner" role="dialog" aria-modal="true" aria-labelledby="updTitle"></div>
+  </div>
+
   <script src="profiles.js"></script>
   <script src="sync.js"></script>
   <script src="hls.min.js"></script>
   <script src="player.js"></script>
   <script src="app.js"></script>
   <script src="manga.js"></script>
+  <script src="update-ui.js"></script>
 </body>
 </html>

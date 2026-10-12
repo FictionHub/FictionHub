@@ -401,3 +401,89 @@ main { padding: 0 0 70px; }
 .nseek { flex: 1; min-width: 120px; accent-color: var(--accent); height: 6px; cursor: pointer; }
 .nvol { width: 70px; accent-color: var(--accent); }
 .nquality { background: var(--card); color: var(--text); border: 1px solid #ffffff1f; border-radius: 7px; height: 30px; padding: 0 6px; font-size: 12.5px; }
+
+/* ---------- Auto-update window & Settings → Updates ---------- */
+#settingsBtn { position: relative; } /* anchor for the update badge */
+#settingsBtn.upd-badge::after {
+  content: ""; position: absolute; top: 2px; right: 2px; width: 10px; height: 10px;
+  border-radius: 50%; background: var(--accent); border: 2px solid #0b0b0f;
+  animation: updPulse 1.6s ease-in-out infinite;
+}
+@keyframes updPulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-soft); }
+  50% { box-shadow: 0 0 0 5px transparent; }
+}
+
+.upd-modal { z-index: 260; } /* above the profile picker (200) + modals (210) */
+.upd-modal-inner { width: min(560px, 94vw); padding: 0; overflow: hidden; }
+body.upd-open { overflow: hidden; }
+
+.upd-hero { text-align: center; padding: 34px 30px 4px; }
+.upd-hero h2 { font-size: 22px; font-weight: 800; margin-top: 4px; }
+.upd-sub { color: var(--muted); font-size: 14px; line-height: 1.55; margin-top: 8px; }
+
+.upd-icon {
+  width: 64px; height: 64px; margin: 0 auto; border-radius: 50%;
+  display: grid; place-items: center; font-size: 27px; font-weight: 700; color: #fff;
+  background: linear-gradient(135deg, var(--accent), #ff5f00 55%, #ffbf5f);
+  box-shadow: 0 10px 30px var(--accent-soft), 0 0 0 6px var(--accent-soft);
+}
+.upd-icon.ok { background: linear-gradient(135deg, #16a34a, #4ade80); box-shadow: 0 10px 30px #16a34a33, 0 0 0 6px #16a34a26; }
+.upd-icon.err { background: linear-gradient(135deg, #dc2626, #f87171); box-shadow: 0 10px 30px #dc262633, 0 0 0 6px #dc262626; }
+.upd-icon.neutral { background: linear-gradient(135deg, #3f3f46, #a1a1aa); box-shadow: 0 10px 30px #3f3f4633, 0 0 0 6px #3f3f4626; }
+.upd-icon.spin {
+  background: transparent; box-shadow: none;
+  border: 4px solid #ffffff1f; border-top-color: var(--accent);
+  animation: spin .9s linear infinite;
+}
+
+.upd-vers { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.ver-chip {
+  background: var(--card); border: 1px solid #ffffff1f; padding: 6px 13px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.ver-chip-new { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.upd-arrow { color: var(--muted); }
+.upd-date { color: var(--muted); font-size: 12px; margin-top: 10px; }
+
+.upd-body { padding: 6px 26px 0; }
+.upd-notes-head {
+  text-align: left; font-size: 11.5px; letter-spacing: 1.4px; text-transform: uppercase;
+  color: var(--muted); font-weight: 700; margin: 18px 0 8px;
+}
+.upd-notes {
+  background: var(--card); border: 1px solid #ffffff14; border-radius: 12px;
+  padding: 12px 15px; max-height: 220px; overflow: auto; text-align: left;
+  font-size: 13.5px; line-height: 1.6;
+}
+.upd-notes p { margin: 5px 0; }
+.upd-notes ul { margin: 5px 0; padding-left: 18px; }
+.upd-notes li { margin: 3px 0; }
+.upd-notes-empty { color: var(--muted); }
+.upd-note { padding: 9px 0; border-top: 1px dashed #ffffff1f; }
+.upd-note:first-child { border-top: none; padding-top: 0; }
+.upd-note-ver { font-size: 12px; font-weight: 800; color: var(--accent); margin-bottom: 3px; }
+
+.upd-progress { height: 9px; background: #ffffff14; border-radius: 999px; overflow: hidden; margin-top: 18px; }
+.upd-progress-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), #ffbf5f); transition: width .3s ease; }
+.upd-progress-fill.indeterminate { width: 40%; animation: updSlide 1.2s ease-in-out infinite; }
+@keyframes updSlide { 0% { transform: translateX(-110%); } 100% { transform: translateX(300%); } }
+.upd-prog-meta { display: flex; justify-content: space-between; color: var(--muted); font-size: 12.5px; margin-top: 9px; font-variant-numeric: tabular-nums; }
+
+.upd-actions { display: flex; gap: 10px; align-items: center; justify-content: flex-end; padding: 20px 26px 26px; flex-wrap: wrap; }
+.upd-actions .btn { padding: 12px 22px; }
+.upd-link {
+  margin-right: auto; background: none; border: none; color: var(--muted);
+  font-family: inherit; font-size: 12.5px; cursor: pointer; padding: 6px 0; transition: .15s;
+}
+.upd-link:hover { color: var(--text); text-decoration: underline; }
+
+/* Settings → Updates */
+.upd-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.upd-row-label { color: var(--muted); font-size: 13px; }
+#updCheckBtn:disabled { opacity: .55; cursor: default; }
+
+@media (max-width: 560px) {
+  .upd-actions { justify-content: stretch; }
+  .upd-actions .btn, .upd-actions .upd-link { flex: 1; justify-content: center; text-align: center; margin-right: 0; }
+}

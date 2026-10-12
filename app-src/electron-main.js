@@ -12,6 +12,9 @@ process.env.FH_DATA_DIR = app.getPath("userData");
 
 require("./server.js"); // boots the local server on 127.0.0.1:8787
 
+// In-app auto-update manager (electron-updater → GitHub Releases built by CI).
+const updater = require("./updater.js");
+
 const URL = "http://localhost:8787";
 
 // Ad/redirect networks commonly injected by free streaming embeds. Blocking
@@ -102,6 +105,33 @@ app.whenReady().then(() => {
 
   createWindow();
 
+  // --- In-app auto-update -------------------------------------------------
+  // updater.js pushes `update:event` messages into the window; the renderer
+  // UI (update-ui.js) drives everything. Nothing is ever downloaded or
+  // installed without the user confirming it in the update window. Results
+  // are kept to plain values — structured-clone can't send electron-updater's
+  // UpdateCheckResult (it carries a CancellationToken) over IPC.
+  updater.init(() => BrowserWindow.getAllWindows()[0] || null);
+  ipcMain.handle("update:version", () => updater.getVersion());
+  ipcMain.handle("update:state", () => updater.getState());
+  ipcMain.handle("update:check", async () => {
+    try {
+      const result = await updater.checkForUpdates();
+      return result && result.dev ? { dev: true } : { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e && (e.message || e.code)) || String(e) };
+    }
+  });
+  ipcMain.handle("update:download", async () => {
+    try {
+      await updater.downloadUpdate();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e && (e.message || e.code)) || String(e) };
+    }
+  });
+  ipcMain.handle("update:install", () => { updater.installUpdate(); return { ok: true }; });
+  ipcMain.handle("update:defer", () => ({ ok: updater.deferInstall() }));
 });
 
 app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

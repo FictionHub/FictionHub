@@ -31,3 +31,19 @@ npm run build          # produces app-src/dist/FictionHub Setup <version>.exe
 Every push runs the [`Build FictionHub Installer`](.github/workflows/build.yml)
 GitHub Action, which builds the Windows (NSIS) installer and uploads it as a
 downloadable artifact on the workflow run.
+
+## Auto-updates
+
+The desktop app checks GitHub Releases ~10 seconds after launch (and every 6
+hours after that) and opens an **in-app window** showing the current version,
+the latest version, and the changes — nothing is downloaded until the user
+confirms, and nothing is installed until they choose *Restart to update* (or
+until they quit, if they pick *Install the next time I quit*). Settings →
+Updates has the same information plus a manual *Check for updates* button.
+
+Wiring: `app-src/updater.js` (main process, electron-updater) ↔
+`app-src/preload.js` (`window.fictionhub.updater`) ↔ `app-src/update-ui.js`
+(renderer UI). Because electron-updater only compares *versions*, CI stamps a
+strictly increasing version (`major.minor.(patch + run number)`) into every
+build and publishes the installer/`latest.yml`/blockmap under exactly the file
+name the updater requests.

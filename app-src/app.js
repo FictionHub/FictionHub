@@ -978,6 +978,7 @@ function renderSettingsView() {
 
   if (typeof renderDownloadsList === "function") renderDownloadsList();
   if (typeof renderSyncStatus === "function") renderSyncStatus();
+  if (typeof renderUpdateSection === "function") renderUpdateSection();
 }
 
 // `apply` (default true) updates the live theme as you click; pass false

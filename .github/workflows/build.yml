@@ -15,8 +15,12 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
+      # Full history + tags: release notes are built from the commits since
+      # the previous release tag (see "Stamp app version" below).
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -32,6 +36,40 @@ jobs:
         working-directory: app-src
         run: npm install
 
+      # electron-updater decides "is there an update?" by comparing the version
+      # inside the running app with the version in latest.yml — a release that
+      # doesn't bump the version is invisible to installed users. Every build
+      # therefore stamps `base patch + run number` (strictly increasing, since
+      # the run number only ever grows) into the app, and writes real release
+      # notes from the commits since the previous release tag so the in-app
+      # update window has something to show.
+      # NOTE: the base version in app-src/package.json must stay plain x.y.z.
+      - name: Stamp app version & write release notes
+        shell: pwsh
+        run: |
+          $pkgPath = 'app-src/package.json'
+          $pkg = Get-Content $pkgPath -Raw | ConvertFrom-Json
+          $base = @($pkg.version -split '\.')
+          $ver = '{0}.{1}.{2}' -f $base[0], $base[1], ([int]$base[2] + [int]$env:GITHUB_RUN_NUMBER)
+          $pkg.version = $ver
+          $pkg | ConvertTo-Json -Depth 10 | Set-Content $pkgPath -Encoding utf8
+          "FH_VERSION=$ver" >> $env:GITHUB_ENV
+          Write-Output "Stamping version $ver (base $($base -join '.') + run $env:GITHUB_RUN_NUMBER)"
+
+          $prev = (git tag --list 'v*' --sort=-version:refname | Select-Object -First 1)
+          $range = if ($prev) { "$prev..HEAD" } else { '' }
+          $lines = if ($range) { git log $range --pretty=format:%h%x20%s } else { git log -20 --pretty=format:%h%x20%s }
+          $commits = @($lines | ForEach-Object { "- $_" })
+          if (-not $commits) { $commits = @('- Maintenance and bug fixes.') }
+          $notes = @("### What's changed in v$ver", '') + $commits
+          if ($prev) {
+            $notes += ''
+            $notes += "**Full Changelog**: https://github.com/FictionHub/FictionHub/compare/$prev...v$ver"
+          }
+          ($notes -join "`n") | Set-Content -Path release-notes.md -Encoding utf8
+          Write-Output "Release notes (previous tag: $prev):"
+          Get-Content release-notes.md
+
       # Friction-free Windows build: NSIS installer, no code signing.
       # npmRebuild:false (app-src/package.json) → no native modules, no VS needed.
       # --publish never: we build here, then publish the release in a later step.
@@ -44,32 +82,48 @@ jobs:
         id: stage
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path . -Recurse -Filter 'FictionHub Setup*.exe' -ErrorAction SilentlyContinue |
+          $exe = Get-ChildItem -Path . -Recurse -Filter '*Setup*.exe' -ErrorAction SilentlyContinue |
+                 Where-Object { $_.Name -notlike '*uninstaller*' } |
                  Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $exe) { Write-Error 'Installer was not produced by the build.'; exit 1 }
           $dir = $exe.DirectoryName
           $yml = Get-ChildItem -Path $dir -Filter 'latest.yml' -ErrorAction SilentlyContinue | Select-Object -First 1
-          $bm  = Get-ChildItem -Path $dir -Filter "$($exe.Name).blockmap" -ErrorAction SilentlyContinue | Select-Object -First 1
-          $ver = (Get-Content 'app-src/package.json' -Raw | ConvertFrom-Json).version
+          if (-not $yml) { Write-Error 'latest.yml was not produced by the build.'; exit 1 }
+          $bm = Get-ChildItem -Path $dir -Filter "$($exe.Name).blockmap" -ErrorAction SilentlyContinue | Select-Object -First 1
+
+          # electron-builder writes the artifact name into latest.yml with spaces
+          # replaced by dashes — that is the exact URL electron-updater requests,
+          # so upload the assets under that very name. (Uploading the spaced name
+          # instead lets GitHub/softprops mangle it into dots, which makes the
+          # in-app download 404.)
+          $ymlText = Get-Content $yml.FullName -Raw
+          $target = if ($ymlText -match '(?m)^\s*(?:-\s*)?url:\s*(\S+)') { $Matches[1] }
+                    elseif ($ymlText -match '(?m)^\s*path:\s*(\S+)') { $Matches[1] }
+                    else { $exe.Name }
+
+          $ver = $env:FH_VERSION
           $out = Join-Path $PWD 'release'
           Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $out | Out-Null
-          Copy-Item $exe.FullName -Destination $out
-          if ($yml) { Copy-Item $yml.FullName -Destination $out }
-          if ($bm)  { Copy-Item $bm.FullName  -Destination $out }
-          "tag=v$ver-${{ github.run_number }}" >> $env:GITHUB_OUTPUT
-          "name=FictionHub v$ver (build ${{ github.run_number }})" >> $env:GITHUB_OUTPUT
+          Copy-Item $exe.FullName -Destination (Join-Path $out $target)
+          if ($bm) { Copy-Item $bm.FullName -Destination (Join-Path $out "$target.blockmap") }
+          Copy-Item $yml.FullName -Destination $out
+          "tag=v$ver" >> $env:GITHUB_OUTPUT
+          "name=FictionHub v$ver" >> $env:GITHUB_OUTPUT
           Get-ChildItem $out | ForEach-Object { Write-Output "staged: $($_.Name)" }
 
       # Create a NEW GitHub Release for every build, tagged uniquely per run and
       # marked as "latest" so the in-app auto-updater finds the newest installer.
+      # body_path: the release notes assembled in "Stamp app version" (commits
+      # since the previous tag + compare link) — the app shows these as the
+      # "What's changed" list in its update window.
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.stage.outputs.tag }}
           name: ${{ steps.stage.outputs.name }}
           make_latest: true
-          generate_release_notes: true
+          body_path: release-notes.md
           fail_on_unmatched_files: true
           files: release/*
         env:
@@ -80,5 +134,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: FictionHub-Setup
-          path: release/FictionHub Setup*.exe
+          path: release/*.exe
           if-no-files-found: error
