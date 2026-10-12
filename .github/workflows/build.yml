@@ -1,10 +1,15 @@
-name: Build FictionHub Installer
+name: Build & Release FictionHub Installer
 
-# Rebuild the Windows installer on every commit pushed to the repo, and let it
-# be triggered manually from the Actions tab too.
+# Rebuild the Windows installer on every push to main and publish it as a real
+# GitHub Release (installer + auto-update latest.yml + blockmap). Also runnable
+# manually from the Actions tab.
 on:
   push:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: write   # required to create releases and upload their assets
 
 jobs:
   build:
@@ -27,28 +32,53 @@ jobs:
         working-directory: app-src
         run: npm install
 
-      # Friction-free Windows build: NSIS installer, no code signing, no publish.
+      # Friction-free Windows build: NSIS installer, no code signing.
       # npmRebuild:false (app-src/package.json) → no native modules, no VS needed.
+      # --publish never: we build here, then publish the release in a later step.
       - name: Build NSIS installer
         run: npm run build
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # The output dir varies depending on how the paths resolve, so locate the
-      # produced installer wherever electron-builder wrote it.
-      - name: Locate installer
-        id: find
+      # Stage the installer + auto-update files into a clean folder so the release
+      # step uploads only what is needed (not the huge unpacked app directory).
+      - name: Stage release files
+        id: stage
         shell: pwsh
         run: |
           $exe = Get-ChildItem -Path . -Recurse -Filter 'FictionHub Setup*.exe' -ErrorAction SilentlyContinue |
                  Sort-Object LastWriteTime -Descending | Select-Object -First 1
           if (-not $exe) { Write-Error 'Installer was not produced by the build.'; exit 1 }
-          Write-Output "path=$($exe.FullName)" >> $env:GITHUB_OUTPUT
-          Write-Output "Found installer: $($exe.FullName)"
+          $dir = $exe.DirectoryName
+          $yml = Get-ChildItem -Path $dir -Filter 'latest.yml' -ErrorAction SilentlyContinue | Select-Object -First 1
+          $bm  = Get-ChildItem -Path $dir -Filter "$($exe.Name).blockmap" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $ver = (Get-Content 'app-src/package.json' -Raw | ConvertFrom-Json).version
+          $out = Join-Path $PWD 'release'
+          Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          Copy-Item $exe.FullName -Destination $out
+          if ($yml) { Copy-Item $yml.FullName -Destination $out }
+          if ($bm)  { Copy-Item $bm.FullName  -Destination $out }
+          "tag=v$ver-${{ github.run_number }}" >> $env:GITHUB_OUTPUT
+          "name=FictionHub v$ver (build ${{ github.run_number }})" >> $env:GITHUB_OUTPUT
+          Get-ChildItem $out | ForEach-Object { Write-Output "staged: $($_.Name)" }
 
+      # Create a NEW GitHub Release for every build, tagged uniquely per run and
+      # marked as "latest" so the in-app auto-updater finds the newest installer.
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.stage.outputs.tag }}
+          name: ${{ steps.stage.outputs.name }}
+          make_latest: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Keep a per-run artifact too, for quick download from the Actions tab.
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
           name: FictionHub-Setup
-          path: ${{ steps.find.outputs.path }}
+          path: release/FictionHub Setup*.exe
           if-no-files-found: error
