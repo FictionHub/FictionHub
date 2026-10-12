@@ -1,0 +1,43 @@
+{
+  "name": "fictionhub",
+  "version": "2.0.12",
+  "description": "FictionHub — local movies, TV, anime & manga app",
+  "main": "electron-main.js",
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
+  "build": {
+    "appId": "com.fictionhub.app",
+    "productName": "FictionHub",
+    "electronVersion": "31.7.7",
+    "npmRebuild": false,
+    "files": [
+      "**/*",
+      "!build${/*}",
+      "!electron-builder.yml",
+      "!fh-backup.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "KraysThePoet",
+        "repo": "FictionHub"
+      }
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    }
+  }
+}

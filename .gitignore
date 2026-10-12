@@ -1,0 +1,35 @@
+# ---------------------------------------------------------------------------
+# FictionHub — ALLOWLIST gitignore
+# This repo root is also a working Electron runtime (unpacked .dll/.pak/.exe),
+# so we track ONLY source + build config and ignore everything else by default.
+# ---------------------------------------------------------------------------
+
+# Ignore every top-level entry, then re-include only what belongs in source.
+# (Using /* — NOT "*" — so parent dirs can be re-included; git refuses to
+#  re-include a file when its parent directory is excluded by a blanket * / */ )
+/*
+!.gitignore
+!README.md
+!package.json
+!package-lock.json
+
+# --- app source ---
+!app-src/
+!app-src/**
+
+# --- CI workflow ---
+!.github/
+!.github/**
+
+# --- but NEVER commit these inside app-src ---
+app-src/node_modules/
+app-src/build/
+app-src/dist/
+app-src/fh-backup.json
+
+# --- safety: never commit build outputs / logs / runtime anywhere ---
+dist/
+build-output.log
+build-error.log
+*.log
+node_modules/

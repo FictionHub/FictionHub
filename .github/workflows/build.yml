@@ -1,0 +1,54 @@
+name: Build FictionHub Installer
+
+# Rebuild the Windows installer on every commit pushed to the repo, and let it
+# be triggered manually from the Actions tab too.
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # electron-builder lives at the repo root (build tooling only).
+      - name: Install build tooling (root)
+        run: npm install
+
+      # The app's own runtime deps (electron-updater) get bundled into app.asar.
+      - name: Install app dependencies
+        working-directory: app-src
+        run: npm install
+
+      # Friction-free Windows build: NSIS installer, no code signing, no publish.
+      # npmRebuild:false (app-src/package.json) → no native modules, no VS needed.
+      - name: Build NSIS installer
+        run: npm run build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # The output dir varies depending on how the paths resolve, so locate the
+      # produced installer wherever electron-builder wrote it.
+      - name: Locate installer
+        id: find
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path . -Recurse -Filter 'FictionHub Setup*.exe' -ErrorAction SilentlyContinue |
+                 Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $exe) { Write-Error 'Installer was not produced by the build.'; exit 1 }
+          Write-Output "path=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          Write-Output "Found installer: $($exe.FullName)"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FictionHub-Setup
+          path: ${{ steps.find.outputs.path }}
+          if-no-files-found: error

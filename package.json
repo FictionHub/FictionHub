@@ -1,0 +1,12 @@
+{
+  "name": "fictionhub-build",
+  "private": true,
+  "version": "2.0.12",
+  "description": "FictionHub — build tooling (electron-builder). The app itself lives in app-src/.",
+  "scripts": {
+    "build": "electron-builder --win nsis --publish never --project app-src"
+  },
+  "devDependencies": {
+    "electron-builder": "^26.15.3"
+  }
+}
