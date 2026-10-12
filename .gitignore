@@ -8,6 +8,7 @@
 # (Using /* — NOT "*" — so parent dirs can be re-included; git refuses to
 #  re-include a file when its parent directory is excluded by a blanket * / */ )
 /*
+!.gitattributes
 !.gitignore
 !README.md
 !package.json

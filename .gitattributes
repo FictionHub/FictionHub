@@ -1,0 +1,3 @@
+# Normalize line endings so Windows/Unix checkouts stay consistent and the
+# build never churns on CRLF/LF diffs.
+* text=auto eol=lf
