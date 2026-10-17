@@ -389,6 +389,21 @@ main { padding: 0 0 70px; }
 .series-dl-bar { display: flex; align-items: center; gap: 10px; margin: 14px 0 6px; flex-wrap: wrap; }
 .series-dl-bar .hint { color: var(--muted); font-size: 12.5px; }
 
+/* Video download cards (offline library for movies / shows / anime) */
+.dl-badge {
+  position: absolute; top: 8px; left: 8px; z-index: 2;
+  font-size: 11.5px; font-weight: 700; color: #000;
+  background: var(--accent); border-radius: 6px; padding: 2px 7px;
+  letter-spacing: .3px;
+}
+.dl-badge + .dl-badge { top: 32px; }
+.dl-remove {
+  position: absolute; top: 8px; right: 8px; z-index: 3; width: 26px; height: 26px;
+  border: 0; border-radius: 7px; background: #000c; color: #fff;
+  font-size: 15px; line-height: 26px; cursor: pointer; transition: .15s;
+}
+.dl-remove:hover { background: var(--accent); }
+
 /* Native player (hls.js) */
 .player-frame iframe.hidden, .native-stage.hidden { display: none; }
 .native-stage { position: absolute; inset: 0; background: #000; display: flex; flex-direction: column; }

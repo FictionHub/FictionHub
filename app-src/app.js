@@ -400,11 +400,19 @@ async function renderHome() {
     html += rowHTML("Top Rated Movies", topMovies.results);
     html += rowHTML("Top Rated TV", topTv.results);
     html += rowHTML("Coming Soon", upMovies.results);
-    rows.innerHTML = html;
+    const dlShelf = await renderVideoDownloadsShelf();
+    rows.innerHTML = dlShelf + html;
 
     // genre rows appended progressively so the page paints fast
     appendGenreRows(rows, "movie", MOVIE_GENRES.slice(0, 6));
-  } catch (e) { handleErr(e); }
+  } catch (e) {
+    const dlShelf = await renderVideoDownloadsShelf().catch(() => "");
+    handleErr(e);
+    if (dlShelf) {
+      const r = document.getElementById("rows");
+      r.innerHTML = dlShelf + r.innerHTML;
+    }
+  }
 }
 
 async function appendGenreRows(container, type, genres) {
@@ -548,6 +556,7 @@ function switchView(view) {
   else if (view === "movie" || view === "tv") renderCategory(view);
   else if (view === "anime") renderAnime();
   else if (view === "manga") renderManga();
+  else if (view === "downloads") renderVideoDownloadsView();
   else if (view === "watching") renderWatching();
   else if (view === "settings") renderSettingsView();
 }
@@ -565,9 +574,11 @@ function enterPage(id) {
 }
 function exitToBrowse() {
   // tear down whatever page was open
+  if (typeof nativeClose === "function") nativeClose();
   const frame = document.getElementById("playerFrame");
   if (frame) frame.src = "";
   clearTimeout(failoverTimer);
+  clearTimeout(videoDlTimer);
   document.getElementById("watchView").classList.add("hidden");
   document.getElementById("mangaView").classList.add("hidden");
   document.getElementById("settingsView").classList.add("hidden");
@@ -676,11 +687,243 @@ function stepEpisode(delta) {
 function playNextEpisode() { stepEpisode(1); }
 function playPrevEpisode() { stepEpisode(-1); }
 
-// Providers without a playback-event API (e.g. Atlantic) can't report the
-// real playback position — verified: their player emits no postMessage at
-// all. Create/refresh the Continue Watching entry on open anyway, so the
-// title shows up ordered by recency. Progress is preserved from any real
-// tracking (VidLink/Vidking events overwrite this as soon as they fire).
+/* ---------- Video downloads (movies / series / anime) ---------- */
+// "Your Downloads" shelf on the Home view (like the manga downloads shelf).
+async function renderVideoDownloadsShelf() {
+  await fetchVideoDownloads();
+  const items = Object.values(videoDownloads);
+  if (!items.length) return "";
+  const cards = items.map(m => {
+    const key = m.type === "tv" ? `tv-${m.id}-s${m.season}-e${m.episode}` : `movie-${m.id}`;
+    const poster = m.poster ? IMG + m.poster : "";
+    const img = poster ? `<img loading="lazy" src="${escHtml(poster)}" alt="">` : `<div style="height:258px"></div>`;
+    const label = m.type === "tv" ? (m.anime ? "Anime" : "TV Show") : "Movie";
+    const ep = m.type === "tv" ? `S${m.season || 1} E${m.episode || 1}` : "";
+    return `<div class="card" onclick="event.stopPropagation(); playDownload('${escHtml(key)}')">
+      <div class="poster">${img}<div class="overlay"><div class="play-icon">&#9654;</div></div><span class="dl-badge">${label}</span>${ep ? `<span class="dl-badge">${escHtml(ep)}</span>` : ""}</div>
+      <div class="meta"><div class="t">${escHtml(m.title || "")}</div><div class="y">${label}</div></div>
+    </div>`;
+  }).join("");
+  return `<section class="row">
+    <div class="row-head"><h2>Your Downloads</h2><button class="btn btn-ghost" onclick="switchView('downloads')">View all</button></div>
+    <div class="row-wrap"><button class="row-arrow left" onclick="scrollRow(this,-1)">&#8249;</button><div class="row-scroll">${cards}</div><button class="row-arrow right" onclick="scrollRow(this,1)">&#8250;</button></div></section>`;
+}
+// Downloads resolve through the same Native stream pipeline the player uses,
+// then play back entirely from disk via the local server — no internet needed
+// once downloaded. Stored under Documents/FictionHub/Video Downloads.
+let videoDownloads = {};   // video key -> meta (from /__video/downloads)
+let videoDlTimer = null;
+
+function videoKey(type, id, season, episode) {
+  return type === "tv" ? `tv-${id}-s${season}-e${episode}` : `movie-${id}`;
+}
+function videoSeasonKey(id, season) { return `tv-${id}-s${season}`; }
+
+async function fetchVideoDownloads() {
+  try {
+    videoDownloads = await (await fetch("/__video/downloads")).json() || {};
+  } catch { videoDownloads = {}; }
+}
+
+function videoIsDownloaded(key) { return !!videoDownloads[key]; }
+
+function escHtml(s) {
+  return (s || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c]));
+}
+
+// Full video downloads library (its own view). Cards play the download in the
+// native player, or delete it. Named apart from manga.js's renderDownloadsList
+// (which manages manga chapters in Settings) since both are global.
+async function renderVideoDownloadsView() {
+  await fetchVideoDownloads();
+  const rows = document.getElementById("rows");
+  hideHero();
+  document.getElementById("grid").classList.add("hidden");
+  rows.classList.remove("hidden");
+  const items = Object.values(videoDownloads)
+    .sort((a, b) => (b.downloadedAt || 0) - (a.downloadedAt || 0));
+  const cards = items.map(downloadCardHTML).join("");
+  rows.innerHTML = `<section class="row">
+    <div class="row-head"><h2>Your Downloads</h2></div>
+    <div class="row-wrap">
+      <button class="row-arrow left" onclick="scrollRow(this,-1)">&#8249;</button>
+      <div class="row-scroll">${cards}</div>
+      <button class="row-arrow right" onclick="scrollRow(this,1)">&#8250;</button>
+    </div>
+  </section>${items.length ? "" : `<p style="color:var(--muted); padding:40px 0">No downloads yet. Open a movie, show or anime and tap Download.</p>`}`;
+}
+
+function downloadCardHTML(m) {
+  const key = m.type === "tv" ? `tv-${m.id}-s${m.season}-e${m.episode}` : `movie-${m.id}`;
+  const poster = m.poster ? IMG + m.poster : "";
+  const label = m.type === "tv" ? (m.anime ? "Anime" : "TV Show") : "Movie";
+  const ep = m.type === "tv" ? `Season ${m.season || 1} · Episode ${m.episode || 1}` : "";
+  const img = poster
+    ? `<img loading="lazy" src="${escHtml(poster)}" alt="">`
+    : `<div style="height:258px"></div>`;
+  return `<div class="card" onclick="event.stopPropagation(); playDownload('${escHtml(key)}')">
+      <div class="poster">
+        ${img}
+        <div class="overlay"><div class="play-icon">&#9654;</div></div>
+        <span class="dl-badge">${label}</span>${ep ? `<span class="dl-badge">${escHtml(ep)}</span>` : ""}
+        <button class="dl-remove" onclick="event.stopPropagation(); deleteVideoDownload('${escHtml(key)}')">&#10005;</button>
+      </div>
+      <div class="meta"><div class="t">${escHtml(m.title || "")}</div><div class="y">${label}</div></div>
+    </div>`;
+}
+function pollVideoDl() {
+  clearTimeout(videoDlTimer);
+  videoDlTimer = setTimeout(refreshVideoDlUi, 1000);
+}
+
+// Refresh the watch-view download bar for the current title/episode.
+async function refreshVideoDlUi() {
+  if (!activeMedia) return;
+  await fetchVideoDownloads();
+  const key = videoKey(activeMedia.type, activeMedia.id, activeMedia.season, activeMedia.episode);
+  const skey = videoSeasonKey(activeMedia.id, activeMedia.season);
+  const btn = document.getElementById("videoDlBtn");
+  const seasonBtn = document.getElementById("videoSeasonDlBtn");
+  const cancelBtn = document.getElementById("videoDlCancelBtn");
+  const prog = document.getElementById("videoDlProgress");
+  const bar = document.getElementById("videoDlBar");
+  if (!btn || !bar) return;
+  bar.classList.remove("hidden");
+  if (seasonBtn) seasonBtn.classList.toggle("hidden", activeMedia.type !== "tv");
+
+  let job = null, seasonJob = null;
+  try { job = await fetch(`/__video/download/status?key=${encodeURIComponent(key)}`).then(r => r.json()); } catch { job = { running: false }; }
+  if (activeMedia.type === "tv") {
+    try { seasonJob = await fetch(`/__video/season-download/status?key=${encodeURIComponent(skey)}`).then(r => r.json()); } catch { seasonJob = null; }
+  }
+
+  const downloaded = videoIsDownloaded(key);
+  if (seasonJob && seasonJob.running) {
+    btn.textContent = downloaded ? "Play Download" : "Downloading…";
+    btn.disabled = !downloaded;
+    if (seasonBtn) { seasonBtn.textContent = "Downloading season…"; seasonBtn.disabled = true; }
+    cancelBtn.classList.remove("hidden");
+    prog.textContent = `Season ${activeMedia.season}: ${seasonJob.done}/${seasonJob.total || "?"} episodes`
+      + (seasonJob.current ? ` · ${seasonJob.current}` : "")
+      + (seasonJob.failed ? ` · ${seasonJob.failed} failed` : "")
+      + (seasonJob.error ? ` · error: ${seasonJob.error}` : "");
+    pollVideoDl();
+    return;
+  }
+  if (job && job.running) {
+    btn.textContent = "Downloading…";
+    btn.disabled = true;
+    if (seasonBtn) seasonBtn.disabled = true;
+    cancelBtn.classList.remove("hidden");
+    prog.textContent = `${job.done} / ${job.total || "?"} segments` + (job.error ? ` · error: ${job.error}` : "");
+    pollVideoDl();
+    return;
+  }
+
+  btn.textContent = downloaded ? "Play Download" : (activeMedia.type === "tv" ? "Download Episode" : "Download");
+  btn.disabled = false;
+  if (seasonBtn) { seasonBtn.textContent = "Download Season"; seasonBtn.disabled = false; }
+  cancelBtn.classList.add("hidden");
+  if (job && job.error) prog.textContent = "Download failed: " + job.error;
+  else if (seasonJob && seasonJob.error) prog.textContent = "Season download failed: " + seasonJob.error;
+  else if (downloaded) {
+    const m = videoDownloads[key];
+    prog.textContent = `Downloaded${m && m.segmentCount ? ` · ${m.segmentCount} segments` : ""}`;
+  } else if (seasonJob && (seasonJob.done || seasonJob.skipped) && !seasonJob.cancel) {
+    prog.textContent = `Season ${activeMedia.season}: ${seasonJob.skipped || seasonJob.done}/${seasonJob.total} episodes`
+      + (seasonJob.failed ? ` · ${seasonJob.failed} failed` : "");
+  } else prog.textContent = "";
+}
+
+function videoDlPayload() {
+  return {
+    type: activeMedia.type,
+    id: activeMedia.id,
+    title: activeMedia.title,
+    season: activeMedia.season,
+    episode: activeMedia.episode,
+    poster: activeMedia.poster,
+    rating: activeMedia.rating,
+    anime: activeMedia.isAnime,
+  };
+}
+
+async function downloadVideo() {
+  if (!activeMedia) return;
+  const key = videoKey(activeMedia.type, activeMedia.id, activeMedia.season, activeMedia.episode);
+  if (videoIsDownloaded(key)) { playDownload(key); return; }
+  const extra = activeMedia.type === "tv" ? ` (Season ${activeMedia.season} · Episode ${activeMedia.episode})` : "";
+  if (!confirm(`Download “${activeMedia.title}”${extra}?\nThis saves the stream to Documents/FictionHub/Video Downloads so you can watch it offline.`)) return;
+  try {
+    const res = await fetch("/__video/download", { method: "POST", body: JSON.stringify(videoDlPayload()) });
+    if (!res.ok) throw new Error(await res.text());
+    await fetchVideoDownloads();
+    refreshVideoDlUi();
+  } catch (e) { alert("Could not start download: " + e.message); }
+}
+
+async function downloadVideoSeason() {
+  if (!activeMedia || activeMedia.type !== "tv") return;
+  const epSel = document.getElementById("episodeSelect");
+  const episodes = epSel ? [...epSel.options].map(o => +o.value).filter(n => n > 0) : [];
+  if (!episodes.length) { alert("No episodes listed for this season yet."); return; }
+  const missing = episodes.filter(ep => !videoIsDownloaded(videoKey("tv", activeMedia.id, activeMedia.season, ep)));
+  if (!missing.length) { alert("Every episode of this season is already downloaded."); return; }
+  if (!confirm(`Download Season ${activeMedia.season} of “${activeMedia.title}” (${missing.length} episode${missing.length === 1 ? "" : "s"})?\nKeep FictionHub open until it finishes. Files go in Documents/FictionHub/Video Downloads.`)) return;
+  try {
+    const res = await fetch("/__video/season-download", {
+      method: "POST",
+      body: JSON.stringify({ ...videoDlPayload(), episodes: missing }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    refreshVideoDlUi();
+  } catch (e) { alert("Could not start season download: " + e.message); }
+}
+
+async function cancelVideoDownload() {
+  if (!activeMedia) return;
+  const key = videoKey(activeMedia.type, activeMedia.id, activeMedia.season, activeMedia.episode);
+  const skey = videoSeasonKey(activeMedia.id, activeMedia.season);
+  await fetch("/__video/download/cancel", { method: "POST", body: JSON.stringify({ key }) }).catch(() => {});
+  if (activeMedia.type === "tv") {
+    await fetch("/__video/season-download/cancel", { method: "POST", body: JSON.stringify({ key: skey }) }).catch(() => {});
+  }
+  refreshVideoDlUi();
+}
+
+async function playDownload(key) {
+  if (!videoDownloads[key]) await fetchVideoDownloads();
+  const m = videoDownloads[key];
+  if (!m) return;
+  activeMedia = {
+    type: m.type, id: m.id, title: m.title,
+    season: m.season || 1, episode: m.episode || 1,
+    isAnime: !!m.anime, poster: m.poster, rating: m.rating,
+  };
+  enterPage("watchView");
+  setWatchMode("video");
+  document.getElementById("playerTitle").textContent = m.title;
+  const picker = document.getElementById("episodePicker");
+  if (m.type === "tv") {
+    picker.classList.remove("hidden");
+    const ss = document.getElementById("seasonSelect"), es = document.getElementById("episodeSelect");
+    ss.innerHTML = `<option value="${m.season || 1}">Season ${m.season || 1}</option>`;
+    es.innerHTML = `<option value="${m.episode || 1}">Episode ${m.episode || 1}</option>`;
+  } else picker.classList.add("hidden");
+  if (typeof nativePlayLocal === "function") nativePlayLocal(`/__video/playlist/${key}`);
+  else alert("Local playback isn't available in this build.");
+  refreshVideoDlUi();
+}
+
+async function deleteVideoDownload(key) {
+  if (!confirm("Delete this download?")) return;
+  await fetch("/__video/delete", { method: "POST", body: JSON.stringify({ key }) }).catch(() => {});
+  await fetchVideoDownloads();
+  refreshVideoDlUi();
+  if (currentView === "downloads") renderVideoDownloadsView();
+  else if (currentView === "home") renderHome();
+}
+
 function touchWatching() {
   if (!activeMedia || !activeMedia.title) return;
   const w = store.watching;
@@ -722,6 +965,7 @@ async function loadIframe() {
     nativeClose();      // stop iframe playback + hide the native stage swap-in
     nativeOpen();
     renderSourceTabs();
+    refreshVideoDlUi();
     return;
   }
   nativeClose();
@@ -764,6 +1008,7 @@ async function loadIframe() {
   document.getElementById("playerFrame").src = url;
   renderSourceTabs();
   armFailover();
+  refreshVideoDlUi();
 }
 
 // Only providers that emit progress events (VidLink MEDIA_DATA, Vidking
@@ -936,7 +1181,7 @@ document.addEventListener("keydown", (e) => {
   }
 
   if (!pageOpen()) {
-    const map = { h: "home", m: "movie", t: "tv", a: "anime", n: "manga", c: "watching" };
+    const map = { h: "home", m: "movie", t: "tv", a: "anime", n: "manga", d: "downloads", c: "watching" };
     if (map[e.key.toLowerCase()]) { switchView(map[e.key.toLowerCase()]); return; }
   }
 

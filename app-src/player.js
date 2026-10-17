@@ -74,6 +74,50 @@ async function nativeOpen() {
   nEl("nativeNotice").classList.add("hidden");
 }
 
+// Play a downloaded title straight from disk: the local m3u8 + segments (and
+// any AES-128 keys) we stored under VIDEO_DIR, served by the local server on
+// this same origin — no embed, no upstream, no internet needed.
+function nativePlayLocal(playlistUrl) {
+  nativeTeardown(false);
+  nativeActive = true;
+  nEl("playerFrame").classList.add("hidden");
+  const stage = nEl("nativeStage");
+  stage.classList.remove("hidden");
+  if (typeof setFailoverNotice === "function") setFailoverNotice("");
+  nEl("nativeNotice").textContent = "Preparing download…";
+  nEl("nativeNotice").classList.remove("hidden");
+
+  const video = nEl("nativeVideo");
+  try {
+    if (window.Hls && Hls.isSupported()) {
+      nativeHls = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 90 });
+      nativeHls.loadSource(playlistUrl);
+      nativeHls.attachMedia(video);
+      nativeHls.on(Hls.Events.ERROR, (_e, data) => {
+        console.log("[native download] hls error:", data.type + "/" + data.details, "fatal=" + data.fatal);
+        if (data.fatal) {
+          nEl("nativeNotice").textContent = "Couldn't play this download — try downloading it again.";
+          nEl("nativeNotice").classList.remove("hidden");
+        }
+      });
+      nativeHls.on(Hls.Events.MANIFEST_PARSED, () => {
+        nativeFillQuality();
+        nativeMaybeResume();
+        nEl("nativeNotice").classList.add("hidden");
+        video.play().catch(() => {});
+      });
+    } else {
+      video.src = playlistUrl;
+      video.addEventListener("loadedmetadata", () => { nEl("nativeNotice").classList.add("hidden"); video.play().catch(() => {}); }, { once: true });
+    }
+  } catch (e) {
+    nEl("nativeNotice").textContent = "Player error: " + e.message;
+    nEl("nativeNotice").classList.remove("hidden");
+    return;
+  }
+  nativeBindControls();
+}
+
 function nativeFail(msg) {
   if (!nativeActive) return;
   if (sourceIndex < SOURCES.length - 1) {

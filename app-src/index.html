@@ -28,6 +28,7 @@
       <button class="nav-btn" data-view="tv" onclick="switchView('tv')">TV Shows</button>
       <button class="nav-btn" data-view="anime" onclick="switchView('anime')">Anime</button>
       <button class="nav-btn" data-view="manga" onclick="switchView('manga')">Manga</button>
+      <button class="nav-btn" data-view="downloads" onclick="switchView('downloads')">Downloads</button>
       <button class="nav-btn" data-view="watching" onclick="switchView('watching')">Continue</button>
     </nav>
     <div class="search-wrap">
@@ -81,6 +82,13 @@
       <p id="failoverNotice" class="failover-notice hidden"></p>
       <p id="srcHint" class="src-hint">Stream won't load? Try another server:</p>
       <div id="sourceTabs" class="source-tabs"></div>
+      <!-- offline download for the current movie / episode (and the season, for TV / anime) -->
+      <div id="videoDlBar" class="series-dl-bar hidden">
+        <button id="videoDlBtn" class="btn btn-ghost" onclick="downloadVideo()">Download</button>
+        <button id="videoSeasonDlBtn" class="btn btn-ghost hidden" onclick="downloadVideoSeason()">Download Season</button>
+        <button id="videoDlCancelBtn" class="btn btn-ghost hidden" onclick="cancelVideoDownload()">Cancel</button>
+        <span id="videoDlProgress" class="hint"></span>
+      </div>
     </div>
 
     <!-- Inline manga page (detail + reader) -->
