@@ -1046,10 +1046,39 @@ function importData(file) {
   reader.readAsText(file);
 }
 
-/* ---------- Init ---------- */
-// Called once at startup and again whenever the active profile changes.
-function initApp() {
+/* ---------- Startup intro ---------- */
+// Plays a short FictionHub logo animation (Pornhub-style) before the app
+// shell appears. "Fiction" is white on black, "Hub" is black on orange.
+// Only plays once per session; repeat profile switches skip straight to
+// the app shell.
+let introPlayed = false;
+
+function showIntro() {
+  if (introPlayed) { bootApp(); return; }
+  introPlayed = true;
+  const intro = document.getElementById("intro");
+  if (!intro) { bootApp(); return; }
+  intro.classList.remove("hidden");
+  // 3 s animation, then fade out and boot the app shell
+  setTimeout(() => {
+    intro.classList.add("fade-out");
+    setTimeout(() => {
+      intro.classList.add("hidden");
+      bootApp();
+    }, 600);
+  }, 3200);
+}
+
+// Core app boot: accent color, banner, home view. Called by showIntro()
+// after the intro finishes, or directly when the intro is skipped.
+function bootApp() {
   setAccentVars(store.color);
   showBanner(false); // default key is always available now
   switchView("home");
+}
+
+/* ---------- Init ---------- */
+// Called once at startup and again whenever the active profile changes.
+function initApp() {
+  showIntro();
 }
