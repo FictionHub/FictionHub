@@ -142,7 +142,7 @@ jobs:
 
       - name: Add Android platform (Capacitor)
         working-directory: app-src
-        run: npx cap add android
+        run: npx -p @capacitor/cli cap add android
 
       - name: Make gradlew executable
         run: chmod +x app-src/android/gradlew
@@ -162,7 +162,7 @@ jobs:
       - name: Copy web assets to Android (Capacitor sync)
         working-directory: app-src
         run: |
-          npx cap sync android
+          npx -p @capacitor/cli cap sync android
         env:
           CAPACITOR_ANDROID_KEEP_ASSETS: 1
 
