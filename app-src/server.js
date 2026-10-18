@@ -705,7 +705,7 @@ async function handleVideo(req, res, u) {
                            also pipes binary init segments through .m3u8
                            URLs) are passed through byte-clean.
    - /__stream/seg?u=&r=   pipes segment/key/media bytes through */
-const STREAM_ALLOW = /(^|\.)(hls\.lol|atlantic\.st|transcode\.cfd)$/i;
+const STREAM_ALLOW = /(^|\.)(hls\.lol|atlantic\.st|transcode\.cfd|totallyacdn\.org|zenoak\.top)$/i;
 
 const STREAM_TOKEN_KEYS = {
   hl_: "117c358bcfcaf8fe2cfca57c9d2238a300e1c4de2efb83a5012ba84d8a31f1dd",
