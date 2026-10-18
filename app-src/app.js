@@ -1320,7 +1320,239 @@ function bootApp() {
   setAccentVars(store.color);
   showBanner(false); // default key is always available now
   switchView("home");
+  initNewSystems();
 }
+
+// Initialize the new scraper, source manager, and universal player systems
+function initNewSystems() {
+  // Initialize scraper (loads registry, starts background scans)
+  if (typeof initScraper === "function") {
+    window.scraperAPI = initScraper();
+  }
+  
+  // Initialize source manager (will be connected when media is selected)
+  if (typeof initSourceManager === "function" && window.scraperAPI) {
+    window.sourceManager = initSourceManager(window.scraperAPI.getRegistry(), {
+      onSourceChange: onSourceChange,
+      onFailover: onSourceFailover,
+      onError: onSourceError,
+      onPlaybackStart: onSourcePlaybackStart,
+    });
+  }
+  
+  // Initialize universal player
+  if (typeof initUniversalPlayer === "function") {
+    window.universalPlayer = initUniversalPlayer({
+      onPlaybackStart: onPlayerPlaybackStart,
+      onPlaybackEnd: onPlayerPlaybackEnd,
+      onError: onPlayerError,
+      onTimeUpdate: onPlayerTimeUpdate,
+      onNextEpisode: playNextEpisode,
+      onPrevEpisode: playPrevEpisode,
+      onNextSource: onNextSourceRequested,
+    });
+  }
+}
+
+// Source manager callbacks
+function onSourceChange(newSource, oldSource) {
+  console.log("[app] Source changed:", newSource?.api?.name, "->", newSource?.api?.name);
+  if (window.universalPlayer && newSource) {
+    // Load the new source in the universal player
+    const resumePos = getResumePosition();
+    window.universalPlayer.loadSource(newSource, activeMedia, { resumePosition: resumePos });
+    updateSourceIndicator(newSource);
+  }
+}
+
+function onSourceFailover() {
+  if (window.sourceManager) {
+    const nextSource = window.sourceManager.failover("Auto-failover");
+    if (nextSource) {
+      onSourceChange(nextSource);
+    }
+  }
+}
+
+function onSourceError(error) {
+  console.error("[app] Source error:", error);
+  setFailoverNotice("Source error: " + (error?.message || error));
+  onSourceFailover();
+}
+
+function onSourcePlaybackStart(source) {
+  console.log("[app] Playback started on:", source?.api?.name);
+  setFailoverNotice("");
+  updateSourceIndicator(source, "playing");
+}
+
+// Universal player callbacks
+function onPlayerPlaybackStart(source) {
+  if (window.sourceManager) window.sourceManager.reportPlaybackStarted();
+  setFailoverNotice("");
+  updateSourceIndicator(source, "playing");
+}
+
+function onPlayerPlaybackEnd() {
+  // Handle next episode auto-play
+  saveProgress(true);
+}
+
+function onPlayerError(error) {
+  console.error("[app] Player error:", error);
+  setFailoverNotice("Playback error: " + (error?.message || error));
+  onSourceFailover();
+}
+
+function onPlayerTimeUpdate(currentTime, duration) {
+  // Update legacy UI elements if needed
+  // The universal player handles its own UI
+}
+
+function onNextSourceRequested() {
+  onSourceFailover();
+}
+
+function updateSourceIndicator(source, status = "connecting") {
+  // Update the source tabs to show active source
+  renderSourceTabs(); // Re-render with new active source
+  // Also update universal player's source indicator
+  if (window.universalPlayer && typeof window.universalPlayer.updateSourceIndicator === "function") {
+    window.universalPlayer.updateSourceIndicator(source.api?.name || "Unknown", status);
+  }
+}
+
+function getResumePosition() {
+  if (!activeMedia) return 0;
+  const key = activeMedia.type + ":" + activeMedia.id;
+  const watching = JSON.parse(localStorage.getItem("fh_watching") || "{}");
+  const entry = watching[key];
+  if (entry && entry.currentTime && entry.currentTime > 5) {
+    // Check if it's the same episode
+    if (activeMedia.type !== "tv" || (entry.season === activeMedia.season && entry.episode === activeMedia.episode)) {
+      return entry.currentTime;
+    }
+  }
+  return 0;
+}
+
+// Override the old loadIframe to use new system
+const originalLoadIframe = loadIframe;
+loadIframe = async function() {
+  if (!activeMedia) return;
+  
+  // Ensure source manager is initialized
+  if (!window.sourceManager && window.scraperAPI) {
+    window.sourceManager = window.initSourceManager(window.scraperAPI.getRegistry(), {
+      onSourceChange: onSourceChange,
+      onFailover: onSourceFailover,
+      onError: onSourceError,
+      onPlaybackStart: onSourcePlaybackStart,
+    });
+  }
+  
+  // Set active media in source manager
+  if (window.sourceManager) {
+    const source = window.setActiveMedia(activeMedia, window.scraperAPI.getRegistry());
+    if (source) {
+      // Load in universal player
+      if (window.loadSource) {
+        const resumePos = getResumePosition();
+        await window.loadSource(source, activeMedia, { resumePosition: resumePos });
+        window.startPlaybackMonitor();
+        updateSourceIndicator(source);
+      }
+      return;
+    }
+  }
+  
+  // Fallback to old system if new system fails
+  return originalLoadIframe.apply(this, arguments);
+};
+
+// Override switchSource to use new system
+const originalSwitchSource = switchSource;
+switchSource = function(i) {
+  if (window.selectSource) {
+    const newSource = window.selectSource(i);
+    if (newSource && window.loadSource) {
+      const resumePos = getResumePosition();
+      window.loadSource(newSource, activeMedia, { resumePosition: resumePos });
+      window.startPlaybackMonitor();
+      updateSourceIndicator(newSource);
+    }
+    // Update legacy sourceIndex for compatibility
+    sourceIndex = i;
+    if (activeMedia) {
+      const ls = store.lastServer;
+      ls[activeMedia.type + ":" + activeMedia.id] = i;
+      store.lastServer = ls;
+    }
+    return;
+  }
+  return originalSwitchSource.apply(this, arguments);
+};
+
+// Override exitToBrowse to cleanup player
+const originalExitToBrowse = exitToBrowse;
+exitToBrowse = function() {
+  if (window.destroyPlayer) {
+    window.destroyPlayer();
+  }
+  if (window.sourceManager) {
+    window.sourceManager.playbackStarted = false;
+    clearTimeout(window.sourceManager.playbackTimer);
+  }
+  return originalExitToBrowse.apply(this, arguments);
+};
+
+// Override nativeOpen/nativePlayLocal to use universal player when possible
+const originalNativeOpen = nativeOpen;
+nativeOpen = async function() {
+  if (window.loadSource && window.getAllSources && activeMedia) {
+    // Get the native source
+    const nativeSource = window.getAllSources().find(s => s.api?.native);
+    if (nativeSource) {
+      return window.loadSource(nativeSource, activeMedia, { 
+        resumePosition: getResumePosition(),
+        forceNative: true 
+      });
+    }
+  }
+  return originalNativeOpen.apply(this, arguments);
+};
+
+const originalNativePlayLocal = nativePlayLocal;
+nativePlayLocal = function(playlistUrl) {
+  if (window.loadSource && activeMedia) {
+    // Create a pseudo-source for local playback
+    const localSource = {
+      key: "local",
+      api: { name: "Local Download", native: true },
+      url: playlistUrl,
+    };
+    return window.loadSource(localSource, activeMedia, { 
+      resumePosition: getResumePosition(),
+      forceNative: true 
+    });
+  }
+  return originalNativePlayLocal.apply(this, arguments);
+};
+
+// Add global functions for UI
+window.switchSource = switchSource;
+window.loadIframe = loadIframe;
+window.exitToBrowse = exitToBrowse;
+window.nativeOpen = nativeOpen;
+window.nativePlayLocal = nativePlayLocal;
+
+// Expose for debugging
+window.fhDebug = {
+  scraper: () => window.scraperAPI,
+  sourceManager: () => window.sourceManager,
+  universalPlayer: () => window.universalPlayer,
+  activeMedia: () => activeMedia,
+};
 
 /* ---------- Init ---------- */
 // Called once at startup and again whenever the active profile changes.

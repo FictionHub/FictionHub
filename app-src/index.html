@@ -60,8 +60,10 @@
         <select id="episodeSelect" onchange="playSelectedEpisode()"></select>
       </div>
       <div class="player-frame">
-        <iframe id="playerFrame" allowfullscreen allow="autoplay; encrypted-media; fullscreen"></iframe>
-        <!-- our own hls.js player (native server tabs) -->
+        <!-- Universal Player Container (replaces old iframe + native stage) -->
+        <div id="universalPlayerContainer"></div>
+        <!-- Legacy players kept for backward compatibility -->
+        <iframe id="playerFrame" class="hidden" allowfullscreen allow="autoplay; encrypted-media; fullscreen"></iframe>
         <div id="nativeStage" class="native-stage hidden">
           <video id="nativeVideo" playsinline></video>
           <div id="nativeNotice" class="native-notice hidden">Resolving stream…</div>
@@ -289,6 +291,9 @@
   <script src="profiles.js"></script>
   <script src="sync.js"></script>
   <script src="hls.min.js"></script>
+  <script src="scraper.js"></script>
+  <script src="source-manager.js"></script>
+  <script src="universal-player.js"></script>
   <script src="player.js"></script>
   <script src="app.js"></script>
   <script src="manga.js"></script>
