@@ -152,12 +152,13 @@ jobs:
       - name: Stamp Android version
         shell: bash
         run: |
-          pkgPath='app-src/package.json'
-          ver=$(cat release-notes.md 2>/dev/null | grep -o 'v[0-9.]\+' | head -1 | sed 's/^v//')
-          if [ -z "$ver" ]; then
-            base=$(cat $pkgPath | jq -r .version | cut -d. -f1,2)
-            ver="${base}.$((${base##*.} + ${GITHUB_RUN_NUMBER}))"
-          fi
+          # Same strictly-increasing version formula as the Windows job:
+          # base patch + run number (run numbers only ever grow).
+          # node reads package.json so this needs no jq.
+          baseVer=$(node -p "require('./app-src/package.json').version")
+          base=$(echo "$baseVer" | cut -d. -f1,2)
+          patch=$(echo "$baseVer" | cut -d. -f3)
+          ver="${base}.$((patch + GITHUB_RUN_NUMBER))"
           echo "FH_VERSION=$ver" >> $GITHUB_ENV
           echo "Building Android version $ver"
 
