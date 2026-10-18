@@ -140,12 +140,12 @@ jobs:
         working-directory: app-src
         run: npm install
 
-      - name: Make gradlew executable
-        run: chmod +x app-src/android/gradlew
-
       - name: Add Android platform (Capacitor)
         working-directory: app-src
         run: npx cap add android
+
+      - name: Make gradlew executable
+        run: chmod +x app-src/android/gradlew
 
       - name: Stamp Android version
         shell: bash

@@ -6,7 +6,8 @@
   "dependencies": {
     "electron-updater": "^6.8.9",
     "@capacitor/core": "^7.0.0",
-    "@capacitor/android": "^7.0.0"
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/cli": "^7.0.0"
   },
   "build": {
     "appId": "com.fictionhub.app",
