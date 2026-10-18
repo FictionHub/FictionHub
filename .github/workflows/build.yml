@@ -94,7 +94,6 @@ jobs:
           name: FictionHub-Windows-Setup
           path: release/*.exe
           if-no-files-found: error
-
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
@@ -108,6 +107,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -123,19 +123,20 @@ jobs:
           ndk-version: r27c
           cmdline-tools-version: latest
 
-      - name: Install build tooling
-        run: npm install
+      - name: Install build tooling (root)
+        run: npm ci
 
       - name: Install app dependencies
         working-directory: app-src
-        run: npm install
+        run: npm ci
+
+      - name: Make gradlew executable
+        run: chmod +x android/gradlew
 
       - name: Stamp Android version
         shell: bash
         run: |
           pkgPath='app-src/package.json'
-          base=$(cat $pkgPath | jq -r .version | cut -d. -f1,2)
-          ver="${base}.$((${base##*.} + ${GITHUB_RUN_NUMBER}))"
           ver=$(cat release-notes.md 2>/dev/null | grep -o 'v[0-9.]\+' | head -1 | sed 's/^v//')
           if [ -z "$ver" ]; then
             base=$(cat $pkgPath | jq -r .version | cut -d. -f1,2)
@@ -144,14 +145,14 @@ jobs:
           echo "FH_VERSION=$ver" >> $GITHUB_ENV
           echo "Building Android version $ver"
 
-      - name: Copy web assets to Android
+      - name: Copy web assets to Android (Capacitor sync)
         run: |
           npx cap sync android
 
       - name: Build Release APK
         run: |
           cd android
-          ./gradlew assembleRelease -PversionCode=${{ github.run_number }} -PversionName=${{ env.FH_VERSION }}
+          ./gradlew assembleRelease -PversionCode=${{ github.run_number }} -PversionName=${{ env.FH_VERSION }} --no-daemon
 
       - name: Find APK
         id: find-apk
@@ -159,6 +160,7 @@ jobs:
           APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" -not -name "*unsigned*" | head -1)
           if [ -z "$APK_PATH" ]; then
             echo "APK not found"
+            find android/app/build/outputs -name "*.apk" 2>/dev/null | head -20
             exit 1
           fi
           echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
@@ -182,34 +184,3 @@ jobs:
           name: FictionHub-Android-APK
           path: release/*.apk
           if-no-files-found: error
-
-  release:
-    name: Create GitHub Release
-    needs: [build-windows, build-android]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download Windows artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: FictionHub-Windows-Setup
-          path: release/win
-
-      - name: Download Android artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: FictionHub-Android-APK
-          path: release/android
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ needs.build-windows.outputs.FH_VERSION }}
-          name: FictionHub v${{ needs.build-windows.outputs.FH_VERSION }}
-          make_latest: true
-          body_path: release/release-notes.md
-          fail_on_unmatched_files: false
-          files: |
-            release/win/*
-            release/android/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
