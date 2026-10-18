@@ -12,6 +12,8 @@ jobs:
   build-windows:
     name: Build Windows Installer
     runs-on: windows-latest
+    outputs:
+      FH_VERSION: ${{ steps.stage-win.outputs.FH_VERSION }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -85,15 +87,17 @@ jobs:
           Copy-Item $exe.FullName -Destination (Join-Path $out $target)
           if ($bm) { Copy-Item $bm.FullName -Destination (Join-Path $out "$target.blockmap") }
           Copy-Item $yml.FullName -Destination $out
+          Copy-Item (Join-Path $PWD 'release-notes.md') -Destination $out
           "tag=v$ver" >> $env:GITHUB_OUTPUT
           "name=FictionHub v$ver" >> $env:GITHUB_OUTPUT
+          "FH_VERSION=$ver" >> $env:GITHUB_OUTPUT
           Get-ChildItem $out | ForEach-Object { Write-Output "staged: $($_.Name)" }
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
           name: FictionHub-Windows-Setup
-          path: release/*.exe
+          path: release/*
           if-no-files-found: error
 
   build-android:
@@ -122,7 +126,7 @@ jobs:
       - name: Set up Android SDK (manual - more reliable)
         run: |
           # Install Android SDK components
-          sudo apt-get update && sudo apt-get install -y android-sdk
+          sudo apt-get update && sudo apt-get install -y android-sdk jq
           echo "ANDROID_HOME=/usr/lib/android-sdk" >> $GITHUB_ENV
           echo "ANDROID_SDK_ROOT=/usr/lib/android-sdk" >> $GITHUB_ENV
           # Install required components
@@ -137,7 +141,11 @@ jobs:
         run: npm install
 
       - name: Make gradlew executable
-        run: chmod +x android/gradlew
+        run: chmod +x app-src/android/gradlew
+
+      - name: Add Android platform (Capacitor)
+        working-directory: app-src
+        run: npx cap add android
 
       - name: Stamp Android version
         shell: bash
@@ -152,19 +160,21 @@ jobs:
           echo "Building Android version $ver"
 
       - name: Copy web assets to Android (Capacitor sync)
+        working-directory: app-src
         run: |
           npx cap sync android
         env:
           CAPACITOR_ANDROID_KEEP_ASSETS: 1
 
       - name: Build Release APK
+        working-directory: app-src/android
         run: |
-          cd android
           ./gradlew assembleRelease -PversionCode=${{ github.run_number }} -PversionName=${{ env.FH_VERSION }} --no-daemon --stacktrace
         timeout-minutes: 30
 
       - name: Find APK
         id: find-apk
+        working-directory: app-src
         run: |
           echo "=== Searching for APKs ==="
           find android/app/build/outputs -name "*.apk" -type f 2>/dev/null
@@ -225,7 +235,7 @@ jobs:
           tag_name: v${{ needs.build-windows.outputs.FH_VERSION }}
           name: FictionHub v${{ needs.build-windows.outputs.FH_VERSION }}
           make_latest: true
-          body_path: release/release-notes.md
+          body_path: release/win/release-notes.md
           fail_on_unmatched_files: false
           files: |
             release/win/*

@@ -30,6 +30,7 @@
 app-src/node_modules/
 app-src/build/
 app-src/dist/
+app-src/android/
 app-src/fh-backup.json
 
 # --- safety: never commit build outputs / logs / runtime anywhere ---
