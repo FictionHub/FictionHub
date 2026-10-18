@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">FictionHub NodeJS Server</string>
+    <string name="notification_channel_name">FictionHub Local Server</string>
+    <string name="notification_channel_description">Runs the local FictionHub media server</string>
+</resources>

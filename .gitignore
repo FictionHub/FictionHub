@@ -18,6 +18,10 @@
 !app-src/
 !app-src/**
 
+# --- Android project ---
+!android/
+!android/**
+
 # --- CI workflow ---
 !.github/
 !.github/**

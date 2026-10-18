@@ -1,0 +1,33 @@
+<resources>
+    <!-- FictionHub Brand Colors -->
+    <color name="fh_orange">#ff9000</color>
+    <color name="fh_orange_dark">#e67e00</color>
+    <color name="fh_orange_light">#ffaa33</color>
+    <color name="fh_orange_soft">#ff90002e</color>
+
+    <!-- Dark theme (default) -->
+    <color name="fh_bg">#0a0a0a</color>
+    <color name="fh_bg2">#161616</color>
+    <color name="fh_card">#1d1d1d</color>
+    <color name="fh_text">#ffffff</color>
+    <color name="fh_muted">#9b9b9b</color>
+    <color name="fh_border">#ffffff14</color>
+    <color name="fh_accent_soft">#ff90002e</color>
+
+    <!-- Light theme -->
+    <color name="fh_bg_light">#f4f4f6</color>
+    <color name="fh_bg2_light">#ffffff</color>
+    <color name="fh_card_light">#ececef</color>
+    <color name="fh_text_light">#14141a</color>
+    <color name="fh_muted_light">#6b6b76</color>
+    <color name="fh_border_light">#00000014</color>
+
+    <!-- Standard colors -->
+    <color name="black">#000000</color>
+    <color name="white">#ffffff</color>
+    <color name="transparent">#00000000</color>
+
+    <!-- Notification -->
+    <color name="notification_bg">#161616</color>
+    <color name="notification_text">#ffffff</color>
+</resources>

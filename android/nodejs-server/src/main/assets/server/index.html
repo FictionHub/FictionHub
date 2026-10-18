@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FictionHub — Movies, TV, Anime & Manga</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Startup intro: FictionHub logo animation (Pornhub-style) -->
+  <div id="intro" class="intro hidden">
+    <div class="intro-logo">
+      <span class="intro-word fiction">Fiction</span>
+      <span class="intro-word hub">Hub</span>
+    </div>
+    <div class="intro-progress">
+      <div class="intro-progress-fill"></div>
+    </div>
+  </div>
+  <header class="topbar">
+    <div class="brand" onclick="goHome()">Fiction<span>Hub</span></div>
+    <nav class="nav">
+      <button class="nav-btn active" data-view="home" onclick="switchView('home')">Home</button>
+      <button class="nav-btn" data-view="movie" onclick="switchView('movie')">Movies</button>
+      <button class="nav-btn" data-view="tv" onclick="switchView('tv')">TV Shows</button>
+      <button class="nav-btn" data-view="anime" onclick="switchView('anime')">Anime</button>
+      <button class="nav-btn" data-view="manga" onclick="switchView('manga')">Manga</button>
+      <button class="nav-btn" data-view="downloads" onclick="switchView('downloads')">Downloads</button>
+      <button class="nav-btn" data-view="watching" onclick="switchView('watching')">Continue</button>
+    </nav>
+    <div class="search-wrap">
+      <input id="searchInput" type="text" placeholder="Search…" />
+      <button id="profileBtn" class="profile-btn" title="Switch Profile" onclick="showProfileScreen()"></button>
+      <button id="settingsBtn" title="Settings" onclick="switchView('settings')">⚙</button>
+    </div>
+  </header>
+
+  <main id="content">
+    <!-- Browse surface (home / categories / search) -->
+    <div id="browse">
+      <div id="setupBanner" class="banner hidden">
+        <p>Add a free <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">TMDB API key</a> to load the catalog.</p>
+        <button onclick="switchView('settings')">Add Key</button>
+      </div>
+      <div id="hero" class="hero hidden"></div>
+      <div id="rows"></div>
+      <div id="grid" class="grid hidden"></div>
+      <div id="loader" class="loader hidden"></div>
+    </div>
+
+    <!-- Inline watch page (movies / shows / anime) -->
+    <div id="watchView" class="page hidden">
+      <button class="back-btn" onclick="exitToBrowse()">‹ Back</button>
+      <div id="playerTitle" class="player-title"></div>
+      <div id="episodePicker" class="episode-picker hidden">
+        <select id="seasonSelect" onchange="loadEpisodes()"></select>
+        <select id="episodeSelect" onchange="playSelectedEpisode()"></select>
+      </div>
+      <div class="player-frame">
+        <!-- Universal Player Container (replaces old iframe + native stage) -->
+        <div id="universalPlayerContainer"></div>
+        <!-- Legacy players kept for backward compatibility -->
+        <iframe id="playerFrame" class="hidden" allowfullscreen allow="autoplay; encrypted-media; fullscreen"></iframe>
+        <div id="nativeStage" class="native-stage hidden">
+          <video id="nativeVideo" playsinline></video>
+          <div id="nativeNotice" class="native-notice hidden">Resolving stream…</div>
+          <div class="native-controls" id="nativeControls">
+            <button id="nativePlayBtn" class="nbtn" onclick="nativeTogglePlay()">▶</button>
+            <button class="nbtn" onclick="nativeSeekBy(-10)">−10s</button>
+            <button class="nbtn" onclick="nativeSeekBy(10)">+10s</button>
+            <span id="nativeTime" class="ntime">0:00 / 0:00</span>
+            <input id="nativeSeek" class="nseek" type="range" min="0" max="1000" value="0" step="1" />
+            <button id="nativeMuteBtn" class="nbtn" onclick="nativeToggleMute()">🔊</button>
+            <input id="nativeVolume" class="nvol" type="range" min="0" max="1" step="0.05" value="1" />
+            <select id="nativeQuality" class="nquality" onchange="nativeSetQuality(this.value)"></select>
+            <button class="nbtn" onclick="playNextEpisode()" title="Next episode">⏭</button>
+            <button class="nbtn" onclick="nativeToggleFullscreen()" title="Fullscreen">⛶</button>
+          </div>
+        </div>
+      </div>
+      <p id="failoverNotice" class="failover-notice hidden"></p>
+      <p id="srcHint" class="src-hint">Stream won't load? Try another server:</p>
+      <div id="sourceTabs" class="source-tabs"></div>
+      <!-- offline download for the current movie / episode (and the season, for TV / anime) -->
+      <div id="videoDlBar" class="series-dl-bar hidden">
+        <button id="videoDlBtn" class="btn btn-ghost" onclick="downloadVideo()">Download</button>
+        <button id="videoSeasonDlBtn" class="btn btn-ghost hidden" onclick="downloadVideoSeason()">Download Season</button>
+        <button id="videoDlCancelBtn" class="btn btn-ghost hidden" onclick="cancelVideoDownload()">Cancel</button>
+        <span id="videoDlProgress" class="hint"></span>
+      </div>
+    </div>
+
+    <!-- Inline manga page (detail + reader) -->
+    <div id="mangaView" class="page hidden">
+      <button class="back-btn" onclick="mangaBack()">‹ Back</button>
+
+      <div id="mangaDetail">
+        <div class="manga-head">
+          <img id="mangaCover" class="manga-cover" referrerpolicy="no-referrer" alt="" />
+          <div class="manga-info">
+            <h2 id="mangaTitle"></h2>
+            <div id="mangaStatus" class="manga-status"></div>
+            <p id="mangaDesc" class="manga-desc"></p>
+          </div>
+        </div>
+        <div id="seriesDlBar" class="series-dl-bar">
+          <button id="seriesDlBtn" class="btn btn-ghost" onclick="downloadSeries()">Download Series</button>
+          <button id="seriesDlCancelBtn" class="btn btn-ghost hidden" onclick="cancelSeriesDownload()">Cancel</button>
+          <span id="seriesDlProgress" class="hint"></span>
+        </div>
+        <h3 class="chap-h">Chapters</h3>
+        <div id="chapterList" class="chapter-list"></div>
+      </div>
+
+      <div id="mangaReader" class="hidden">
+        <div class="reader-bar">
+          <button class="rbtn" onclick="backToDetail()">‹ Chapters</button>
+          <select id="chapterSelect" onchange="jumpChapter(this.value)"></select>
+          <button class="rbtn" onclick="prevChapter()">Prev</button>
+          <button class="rbtn" onclick="nextChapter()">Next</button>
+          <button class="rbtn" id="modeBtn" onclick="toggleMode()">Paged View</button>
+          <button class="rbtn" id="qualityBtn" onclick="toggleQuality()">Data Saver</button>
+          <button class="rbtn" id="downloadBtn" onclick="downloadCurrentChapter()">Download</button>
+        </div>
+        <div id="readerPages" class="reader-pages strip"></div>
+        <div class="reader-bar bottom">
+          <button class="rbtn" onclick="prevChapter()">‹ Prev Chapter</button>
+          <button class="rbtn" onclick="backToDetail()">Chapter List</button>
+          <button class="rbtn" onclick="nextChapter()">Next Chapter ›</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Inline settings page -->
+  <div id="settingsView" class="page hidden settings-view">
+    <button class="back-btn" onclick="exitToBrowse()">‹ Back</button>
+    <h2 class="settings-h1">Settings</h2>
+
+    <section class="settings-section">
+      <h3>Appearance</h3>
+      <label>Theme</label>
+      <div id="themeSwatches" class="theme-swatches">
+        <div class="theme-swatch" data-theme="dark" onclick="selectThemeSwatch('dark')">
+          <div class="theme-preview theme-preview-dark"></div>
+          <span>Dark</span>
+        </div>
+        <div class="theme-swatch" data-theme="light" onclick="selectThemeSwatch('light')">
+          <div class="theme-preview theme-preview-light"></div>
+          <span>Light</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-section">
+      <h3>Account</h3>
+      <label>Accent color</label>
+      <input id="colorInput" type="color" value="#ff9000" />
+    </section>
+
+    <section class="settings-section">
+      <h3>Playback</h3>
+      <label>TMDB API Key (v3) — optional</label>
+      <input id="apiKeyInput" type="text" placeholder="Leave blank to use the built-in key" />
+      <label class="check"><input id="autoplayInput" type="checkbox" checked /> Autoplay</label>
+      <label>Preferred server</label>
+      <select id="preferredServerInput"></select>
+      <p class="hint">The site ships with a built-in TMDB key, so it works out of the box. You can optionally paste your own free key (themoviedb.org → Settings → API) — it's stored only in your browser and takes precedence.</p>
+    </section>
+
+    <section class="settings-section">
+      <h3>Manga</h3>
+      <p class="hint">Manga is served entirely by this app's own built-in local server — no CORS proxy or configuration needed.</p>
+      <label>Default reading mode</label>
+      <select id="readerModeInput">
+        <option value="strip">Strip (vertical scroll)</option>
+        <option value="paged">Paged</option>
+      </select>
+      <label>Default image quality</label>
+      <select id="readerQualityInput">
+        <option value="saver">Data Saver</option>
+        <option value="hd">High Quality</option>
+      </select>
+      <label>Reading direction</label>
+      <select id="readerDirectionInput">
+        <option value="ltr">Left to right</option>
+        <option value="rtl">Right to left</option>
+      </select>
+      <label>Downloaded chapters</label>
+      <div id="downloadsList" class="downloads-list"></div>
+    </section>
+
+    <section class="settings-section">
+      <h3>Keyboard Shortcuts</h3>
+      <label class="check"><input id="shortcutsInput" type="checkbox" checked /> Enable keyboard shortcuts</label>
+      <table class="shortcuts-table">
+        <tr><td><kbd>/</kbd></td><td>Focus search</td></tr>
+        <tr><td><kbd>H</kbd> <kbd>M</kbd> <kbd>T</kbd> <kbd>A</kbd> <kbd>N</kbd> <kbd>C</kbd></td><td>Go to Home / Movies / TV / Anime / Manga / Continue (when no page is open)</td></tr>
+        <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Switch playback server (in player)</td></tr>
+        <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Previous / next episode (in player)</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Back to browse</td></tr>
+      </table>
+    </section>
+
+    <section class="settings-section">
+      <h3>Backup &amp; Transfer</h3>
+      <p class="hint">Export your profiles, watch history, manga progress, and settings to a file — or import a previously exported file to restore them (replaces current data).</p>
+      <div class="settings-actions">
+        <button class="btn btn-ghost" onclick="exportData()">Export Backup</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('importFileInput').click()">Import Backup</button>
+      </div>
+      <input id="importFileInput" type="file" accept="application/json" class="hidden" onchange="importData(this.files[0])" />
+    </section>
+
+    <section class="settings-section">
+      <h3>Online Sync (experimental)</h3>
+      <p class="hint">Link devices into a sync room so profiles and continue-watching/reading progress are shared between them — e.g. your friend's profile appears on your device and yours on theirs. Profiles merge by name; data is end-to-end encrypted with the room passphrase and stored only as ciphertext.</p>
+      <div id="syncStatus"></div>
+      <div id="syncRoomActions" class="settings-actions">
+        <button class="btn btn-ghost" onclick="createSyncRoom().catch(e => alert('Could not create room: ' + e.message))">Create Sync Room</button>
+        <input id="syncCodeInput" type="text" placeholder="Paste room code (id|passphrase)" style="flex:1; min-width:220px" />
+        <button class="btn btn-ghost" onclick="joinSyncRoom(document.getElementById('syncCodeInput').value).catch(e => alert('Could not join: ' + e.message))">Join Room</button>
+      </div>
+      <div id="syncLinkedActions" class="settings-actions hidden">
+        <button id="syncCopyBtn" class="btn btn-ghost" onclick="copySyncCode()">Copy Room Code</button>
+        <button class="btn btn-ghost" onclick="syncNow()">Sync Now</button>
+        <button class="btn btn-ghost" onclick="leaveSyncRoom()">Leave Room</button>
+      </div>
+    </section>
+
+    <section class="settings-section">
+      <h3>Updates</h3>
+      <div class="upd-row">
+        <span class="upd-row-label">Installed</span>
+        <span class="ver-chip" id="updCurChip">…</span>
+        <span class="upd-arrow hidden" id="updArrow">→</span>
+        <span class="ver-chip ver-chip-new hidden" id="updLatestChip">…</span>
+      </div>
+      <p class="hint" id="updStatus">FictionHub checks for updates automatically when the app starts. You can also check manually.</p>
+      <div class="settings-actions">
+        <button class="btn btn-ghost" id="updCheckBtn" onclick="updCheck(true)">Check for updates</button>
+      </div>
+    </section>
+
+    <button class="save" onclick="saveSettingsView()">Save</button>
+  </div>
+
+  <!-- "Who's watching?" profile picker (Netflix-style) -->
+  <div id="profileScreen" class="profile-screen hidden">
+    <div class="profile-screen-inner">
+      <h1 class="profile-heading">Who's watching?</h1>
+      <div id="profileGrid" class="profile-grid"></div>
+      <button id="manageProfilesBtn" class="profile-manage-btn" onclick="toggleManageProfiles()">Manage Profiles</button>
+    </div>
+  </div>
+
+  <!-- Add / edit profile modal -->
+  <div id="profileModal" class="modal hidden">
+    <div class="modal-inner profile-edit">
+      <button class="close" onclick="closeProfileModal()">✕</button>
+      <h2 id="profileModalTitle">Add Profile</h2>
+      <div class="avatar-edit-row">
+        <div id="avatarPreview" class="profile-avatar avatar-preview"><span>?</span></div>
+        <div class="avatar-edit-actions">
+          <label class="btn btn-ghost avatar-upload-btn">Choose Picture
+            <input id="avatarFileInput" type="file" accept="image/*" class="hidden"
+                   onchange="pickAvatarFile(this.files[0]); this.value='';" />
+          </label>
+          <button id="avatarRemoveBtn" class="btn btn-ghost hidden" onclick="removeAvatar()">Remove</button>
+        </div>
+      </div>
+      <label>Name</label>
+      <input id="profileNameInput" type="text" maxlength="20" placeholder="Profile name" />
+      <label>Color</label>
+      <div id="profileColorGrid" class="profile-color-grid"></div>
+      <div class="profile-modal-actions">
+        <button id="profileDeleteBtn" class="btn btn-ghost hidden" onclick="deleteProfileConfirm()">Delete Profile</button>
+        <button class="btn btn-play" onclick="saveProfileModal()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- In-app auto-update window: rendered by update-ui.js -->
+  <div id="updateModal" class="modal upd-modal hidden">
+    <div class="modal-inner upd-modal-inner" id="updModalInner" role="dialog" aria-modal="true" aria-labelledby="updTitle"></div>
+  </div>
+
+  <script src="profiles.js"></script>
+  <script src="sync.js"></script>
+  <script src="hls.min.js"></script>
+  <script src="scraper.js"></script>
+  <script src="source-manager.js"></script>
+  <script src="universal-player.js"></script>
+  <script src="player.js"></script>
+  <script src="app.js"></script>
+  <script src="manga.js"></script>
+  <script src="update-ui.js"></script>
+</body>
+</html>

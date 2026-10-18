@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="200"
+    android:viewportHeight="200">
+    <!-- Fiction text (white) -->
+    <path
+        android:fillColor="#ffffff"
+        android:pathData="M40,140 L40,60 Q40,40 60,40 L120,40 Q140,40 140,60 L140,140 Q140,160 120,160 L60,160 Q40,160 40,140 Z M55,55 L55,145 L125,145 L125,55 Z" />
+    <!-- Hub text (orange on dark) -->
+    <path
+        android:fillColor="#ff9000"
+        android:pathData="M130,60 L130,140 Q130,160 150,160 L210,160 Q230,160 230,140 L230,60 Q230,40 210,40 L150,40 Q130,40 130,60 Z" />
+</vector>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simplified monochrome version for adaptive icon -->
+    <path
+        android:fillColor="#ffffff"
+        android:pathData="M20,70 L20,20 Q20,10 30,10 L50,10 Q60,10 60,20 L60,70 Q60,80 50,80 L30,80 Q20,80 20,70 Z M30,20 L30,70 L50,70 L50,20 Z" />
+    <path
+        android:fillColor="#ffffff"
+        android:pathData="M58,20 L58,70 Q58,80 68,80 L108,80 Q118,80 118,70 L118,20 Q118,10 108,10 L68,10 Q58,10 58,20 Z" />
+</vector>

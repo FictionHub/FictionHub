@@ -1,0 +1,39 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme -->
+    <style name="Theme.FictionHub" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Primary brand color -->
+        <item name="colorPrimary">@color/fh_orange</item>
+        <item name="colorPrimaryVariant">@color/fh_orange_dark</item>
+        <item name="colorOnPrimary">@color/black</item>
+        <!-- Secondary brand color -->
+        <item name="colorSecondary">@color/fh_orange_light</item>
+        <item name="colorSecondaryVariant">@color/fh_orange</item>
+        <item name="colorOnSecondary">@color/black</item>
+        <!-- Background colors -->
+        <item name="android:colorBackground">@color/fh_bg</item>
+        <item name="colorSurface">@color/fh_card</item>
+        <item name="colorOnSurface">@color/fh_text</item>
+        <!-- Status bar -->
+        <item name="android:statusBarColor">@color/fh_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <!-- Navigation bar -->
+        <item name="android:navigationBarColor">@color/fh_bg</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <!-- Window -->
+        <item name="android:windowBackground">@color/fh_bg</item>
+        <!-- Splash screen -->
+        <item name="android:windowSplashScreenBackground">@color/fh_bg</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_animated</item>
+        <item name="android:windowSplashScreenAnimationDuration">1000</item>
+        <item name="android:windowSplashScreenBrandingImage">@drawable/splash_branding</item>
+    </style>
+
+    <!-- Launch theme for splash screen -->
+    <style name="Theme.FictionHub.Launch" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/fh_bg</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_animated</item>
+        <item name="windowSplashScreenAnimationDuration">1000</item>
+        <item name="windowSplashScreenBrandingImage">@drawable/splash_branding</item>
+        <item name="postSplashScreenTheme">@style/Theme.FictionHub</item>
+    </style>
+</resources>

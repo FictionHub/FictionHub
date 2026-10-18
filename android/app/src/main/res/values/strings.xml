@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FictionHub</string>
+    <string name="title_activity_main">FictionHub</string>
+    <string name="package_name">com.fictionhub.app</string>
+    <string name="custom_url_scheme">com.fictionhub.app</string>
+</resources>

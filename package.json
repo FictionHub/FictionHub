@@ -2,11 +2,30 @@
   "name": "fictionhub-build",
   "private": true,
   "version": "2.0.12",
-  "description": "FictionHub — build tooling (electron-builder). The app itself lives in app-src/.",
+  "description": "FictionHub — build tooling (electron-builder + capacitor). The app itself lives in app-src/.",
   "scripts": {
-    "build": "electron-builder --win nsis --publish never --project app-src"
+    "build": "electron-builder --win nsis --publish never --project app-src",
+    "cap:sync": "cap sync android",
+    "cap:build": "cd android && ./gradlew assembleRelease",
+    "cap:open": "cap open android",
+    "android:build": "npm run cap:sync && npm run cap:build",
+    "android:debug": "npm run cap:sync && cd android && ./gradlew assembleDebug"
   },
   "devDependencies": {
-    "electron-builder": "^26.15.3"
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/http": "^0.0.2",
+    "@capacitor/keyboard": "^8.0.6",
+    "@capacitor/local-notifications": "^8.3.1",
+    "@capacitor/network": "^8.0.1",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/push-notifications": "^8.1.3",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.4",
+    "electron-builder": "^26.15.3",
+    "typescript": "^7.0.2"
   }
 }

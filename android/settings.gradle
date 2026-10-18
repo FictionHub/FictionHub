@@ -1,0 +1,7 @@
+include ':app'
+include ':capacitor-cordova-android-plugins'
+include ':nodejs-server'
+project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor-cordova-android-plugins/')
+project(':nodejs-server').projectDir = new File('./nodejs-server/')
+
+apply from: 'capacitor.settings.gradle'
