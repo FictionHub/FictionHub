@@ -142,7 +142,9 @@ jobs:
 
       - name: Add Android platform (Capacitor)
         working-directory: app-src
-        run: npx -p @capacitor/cli cap add android
+        # Use the locally installed @capacitor/cli (v7, matches @capacitor/android v7)
+        # --no-install forces the local binary instead of npx fetching the latest CLI.
+        run: npx --no-install cap add android
 
       - name: Make gradlew executable
         run: chmod +x app-src/android/gradlew
@@ -161,8 +163,9 @@ jobs:
 
       - name: Copy web assets to Android (Capacitor sync)
         working-directory: app-src
+        # Use the locally installed @capacitor/cli (v7) to match @capacitor/android v7.
         run: |
-          npx -p @capacitor/cli cap sync android
+          npx --no-install cap sync android
         env:
           CAPACITOR_ANDROID_KEEP_ASSETS: 1
 
