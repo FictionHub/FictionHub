@@ -25,11 +25,11 @@ jobs:
           cache: 'npm'
 
       - name: Install build tooling (root)
-        run: npm ci
+        run: npm install
 
       - name: Install app dependencies
         working-directory: app-src
-        run: npm ci
+        run: npm install
 
       - name: Stamp app version & write release notes
         shell: pwsh
@@ -99,6 +99,7 @@ jobs:
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -118,19 +119,22 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          api-level: 34
-          ndk-version: r27c
-          cmdline-tools-version: latest
+      - name: Set up Android SDK (manual - more reliable)
+        run: |
+          # Install Android SDK components
+          sudo apt-get update && sudo apt-get install -y android-sdk
+          echo "ANDROID_HOME=/usr/lib/android-sdk" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=/usr/lib/android-sdk" >> $GITHUB_ENV
+          # Install required components
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" "ndk;27.0.12077973" 2>/dev/null || true
 
       - name: Install build tooling (root)
-        run: npm ci
+        run: npm install
 
       - name: Install app dependencies
         working-directory: app-src
-        run: npm ci
+        run: npm install
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
@@ -150,19 +154,27 @@ jobs:
       - name: Copy web assets to Android (Capacitor sync)
         run: |
           npx cap sync android
+        env:
+          CAPACITOR_ANDROID_KEEP_ASSETS: 1
 
       - name: Build Release APK
         run: |
           cd android
-          ./gradlew assembleRelease -PversionCode=${{ github.run_number }} -PversionName=${{ env.FH_VERSION }} --no-daemon
+          ./gradlew assembleRelease -PversionCode=${{ github.run_number }} -PversionName=${{ env.FH_VERSION }} --no-daemon --stacktrace
+        timeout-minutes: 30
 
       - name: Find APK
         id: find-apk
         run: |
+          echo "=== Searching for APKs ==="
+          find android/app/build/outputs -name "*.apk" -type f 2>/dev/null
           APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" -not -name "*unsigned*" | head -1)
           if [ -z "$APK_PATH" ]; then
-            echo "APK not found"
-            find android/app/build/outputs -name "*.apk" 2>/dev/null | head -20
+            echo "APK not found in release, checking debug..."
+            APK_PATH=$(find android/app/build/outputs -name "*.apk" -not -name "*unsigned*" | head -1)
+          fi
+          if [ -z "$APK_PATH" ]; then
+            echo "No APK found anywhere!"
             exit 1
           fi
           echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
@@ -191,18 +203,21 @@ jobs:
     name: Create GitHub Release
     needs: [build-windows, build-android]
     runs-on: ubuntu-latest
+    if: always()
     steps:
       - name: Download Windows artifacts
         uses: actions/download-artifact@v4
         with:
           name: FictionHub-Windows-Setup
           path: release/win
+        continue-on-error: true
 
       - name: Download Android artifacts
         uses: actions/download-artifact@v4
         with:
           name: FictionHub-Android-APK
           path: release/android
+        continue-on-error: true
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
