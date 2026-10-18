@@ -1,0 +1,20 @@
+{
+  "appId": "com.fictionhub.app",
+  "appName": "FictionHub",
+  "webDir": "www",
+  "bundledWebResource": false,
+  "server": {
+    "allowNavigation": ["*"],
+    "cleartext": true
+  },
+  "android": {
+    "buildOptions": {
+      "release": {
+        "keystorePath": "",
+        "keystoreAlias": "",
+        "keystorePasswords": "",
+        "keyPasswords": ""
+      }
+    }
+  }
+}
