@@ -3,7 +3,7 @@ import type { CapacitorConfig } from '@capacitor/core';
 const config: CapacitorConfig = {
   appId: 'com.fictionhub.app',
   appName: 'FictionHub',
-  webDir: '.',
+  webDir: 'www',
   bundledWebResource: false,
   server: {
     // Android WebView cannot connect to the desktop's local server (127.0.0.1:8787).
