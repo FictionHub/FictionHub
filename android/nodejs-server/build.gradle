@@ -52,6 +52,7 @@ repositories {
 
 dependencies {
     implementation project(':capacitor-android')
+    implementation 'com.github.nodejs-mobile:nodejs-mobile:0.4.0'
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.core:core:$androidxCoreVersion"
     implementation 'androidx.lifecycle:lifecycle-runtime:2.7.0'
