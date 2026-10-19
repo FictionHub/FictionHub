@@ -19,19 +19,19 @@ android {
     }
 
     // Signing configuration - only applied if keystore env vars are provided
-    def keystorePath = System.getenv("KEYSTORE_PATH")
-    def keystorePassword = System.getenv("KEYSTORE_PASSWORD")
-    def keyAlias = System.getenv("KEY_ALIAS")
-    def keyPassword = System.getenv("KEY_PASSWORD")
-    def hasKeystore = keystorePath && keystorePassword && keyAlias && keyPassword
+    def releaseKeystorePath = System.getenv("KEYSTORE_PATH")
+    def releaseKeystorePassword = System.getenv("KEYSTORE_PASSWORD")
+    def releaseKeyAlias = System.getenv("KEY_ALIAS")
+    def releaseKeyPassword = System.getenv("KEY_PASSWORD")
+    def hasKeystore = releaseKeystorePath && releaseKeystorePassword && releaseKeyAlias && releaseKeyPassword
 
     if (hasKeystore) {
         signingConfigs {
             release {
-                storeFile file(keystorePath)
-                storePassword keystorePassword
-                keyAlias keyAlias
-                keyPassword keyPassword
+                storeFile file(releaseKeystorePath)
+                storePassword releaseKeystorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
             }
         }
     }
