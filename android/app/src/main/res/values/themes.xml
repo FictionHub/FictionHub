@@ -25,7 +25,6 @@
         <item name="android:windowSplashScreenBackground">@color/fh_bg</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_animated</item>
         <item name="android:windowSplashScreenAnimationDuration">1000</item>
-        <item name="android:windowSplashScreenBrandingImage">@drawable/splash_branding</item>
     </style>
 
     <!-- Launch theme for splash screen -->
@@ -33,7 +32,6 @@
         <item name="windowSplashScreenBackground">@color/fh_bg</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/splash_animated</item>
         <item name="windowSplashScreenAnimationDuration">1000</item>
-        <item name="windowSplashScreenBrandingImage">@drawable/splash_branding</item>
         <item name="postSplashScreenTheme">@style/Theme.FictionHub</item>
     </style>
 </resources>
