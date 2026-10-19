@@ -30,42 +30,16 @@ public class MainActivity extends BridgeActivity {
         
         Log.d(TAG, "FictionHub MainActivity created");
     }
-
-    @Override
-    protected ArrayList<Plugin> createPlugins() {
-        ArrayList<Plugin> plugins = super.createPlugins();
-        
-        // Add our custom Node.js server plugin
-        plugins.add(new NodeJSServerPlugin());
-        
-        return plugins;
-    }
-
-    @Override
-    protected void onStart() {
-        super.onStart();
-        Log.d(TAG, "onStart - Starting Node.js server");
-        
-        // Start the local server automatically
-        if (getBridge() != null) {
-            getBridge().getPlugin("NodeJSServer").execute("startServer");
-        }
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        Log.d(TAG, "onStop");
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        Log.d(TAG, "onDestroy - Stopping Node.js server");
-        
-        // Stop the server when app is fully destroyed
-        if (getBridge() != null) {
-            getBridge().getPlugin("NodeJSServer").execute("stopServer");
-        }
-    }
+    
+    // Note: In Capacitor 8, plugins are auto-discovered via @CapacitorPlugin annotation.
+    // The NodeJSServerPlugin will be loaded automatically.
+    // To start the Node.js server, call the "startServer" method from JavaScript:
+    //   const { NodeJSServer } = Capacitor.Plugins;
+    //   await NodeJSServer.startServer();
+    //
+    // Or use the Capacitor App lifecycle event:
+    //   import { App } from '@capacitor/app';
+    //   App.addListener('appStateChange', ({ isActive }) => {
+    //     if (isActive) { NodeJSServer.startServer(); }
+    //   });
 }
