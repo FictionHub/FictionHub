@@ -67,7 +67,7 @@ public class NodeJSBundle {
     private native void redirectOutputToLogcat(boolean enable);
 
     // Compatibility methods for existing code
-    public Object getGlobal(String name) {
+    public JSObjectWrapper getGlobal(String name) {
         // This is a simplified implementation
         // The original NodeJSBundle had a more complex API for accessing JS globals
         Log.w(TAG, "getGlobal(" + name + ") called - limited implementation");
