@@ -81,7 +81,6 @@ dependencies {
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
     implementation project(':nodejs-server')
-    implementation 'com.github.nodejs-mobile:nodejs-mobile:0.4.0'
 }
 
 apply from: 'capacitor.build.gradle'
