@@ -51,7 +51,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.getcapacitor:capacitor:8.0.0'
+    implementation project(':capacitor-android')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.core:core:$androidxCoreVersion"
     implementation 'androidx.lifecycle:lifecycle-runtime:2.7.0'
