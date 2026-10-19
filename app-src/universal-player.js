@@ -64,6 +64,7 @@ function createPlayerUI() {
   container.innerHTML = `
     <div class="up-stage" id="upStage">
       <video id="upVideo" playsinline 
+        controls
         x-webkit-airplay="allow" 
         disablepictureinpicture="false"
         controlslist="nodownload nofullscreen noremoteplayback"></video>
@@ -296,6 +297,17 @@ async function loadNative(source, media) {
   } catch (e) {
     console.error("[universal-player] Native load failed:", e);
     if (source.key === "local" || source.url?.startsWith("/__video/")) throw e;
+    if (source.api?.native) {
+      // The native HLS resolver can be temporarily unavailable. Keep the
+      // player useful by falling back to the provider's own embed instead of
+      // leaving a black native stage with no URL to load.
+      const { type, id, season, episode } = media;
+      const url = type === "tv"
+        ? `https://atlantic.st/embed/tv/${id}/${season || 1}/${episode || 1}`
+        : `https://atlantic.st/embed/movie/${id}`;
+      universalPlayer.isEmbed = true;
+      return loadEmbed({ key: "native-embed-fallback", api: { name: "Atlantic", native: false }, url }, media);
+    }
     universalPlayer.isEmbed = true;
     return loadEmbed(source, media);
   }
@@ -371,10 +383,8 @@ async function playHLS(m3u8Url) {
     universalPlayer.hls.on(Hls.Events.ERROR, (e, data) => {
       console.warn("[universal-player] HLS error:", data.type, data.details, data.fatal);
       if (data.fatal) {
-        if (data.details === "manifestLoadError" || data.details === "levelLoadError") {
-          showOverlay("Stream unavailable, trying next source...");
-          universalPlayer.callbacks.onError?.(data);
-        }
+        showOverlay("Stream unavailable, trying next source...");
+        universalPlayer.callbacks.onError?.(data);
       }
     });
 
