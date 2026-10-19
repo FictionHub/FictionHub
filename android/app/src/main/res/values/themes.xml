@@ -1,6 +1,6 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme -->
-    <style name="Theme.FictionHub" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Theme.FictionHub" parent="Theme.MaterialComponents.DayNight.NoActionBar">
         <!-- Primary brand color -->
         <item name="colorPrimary">@color/fh_orange</item>
         <item name="colorPrimaryVariant">@color/fh_orange_dark</item>
