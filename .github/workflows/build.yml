@@ -137,8 +137,10 @@ jobs:
         working-directory: app-src
         run: npm install
 
+      - name: Add Android platform (Capacitor)
+        run: npx --no-install cap add android
+
       - name: Copy web assets to Android (Capacitor sync)
-        working-directory: app-src
         run: npx --no-install cap sync android
 
       - name: Make gradlew executable
