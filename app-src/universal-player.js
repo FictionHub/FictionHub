@@ -242,8 +242,6 @@ async function loadEmbed(source, media) {
   // Video providers are intentionally not part of the manga proxy allowlist.
   // Load the provider directly in the iframe; Electron's frame-navigation
   // guard and request blocker still protect the top-level app from redirects.
-  universalPlayer.embedFrame.src = url;
-  
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("Embed load timeout")), 20000);
     universalPlayer.embedFrame.onload = () => {
@@ -259,6 +257,10 @@ async function loadEmbed(source, media) {
       clearTimeout(timeout);
       reject(new Error("Embed iframe error"));
     };
+    // Register the handlers before navigation. Cached/local responses can
+    // complete synchronously enough to otherwise miss the load event and
+    // leave the player black until the timeout fires.
+    universalPlayer.embedFrame.src = url;
   });
 }
 
@@ -798,6 +800,11 @@ function updateSourceIndicator(name, status) {
   statusEl.textContent = status;
   ind.classList.remove("hidden");
 }
+
+// Keep the object returned by initUniversalPlayer useful to integration code
+// as well as the global functions used by the legacy wrappers.
+universalPlayer.loadSource = loadSource;
+universalPlayer.updateSourceIndicator = updateSourceIndicator;
 
 window.destroyPlayer = function destroyPlayer() {
   clearProgressTimer();

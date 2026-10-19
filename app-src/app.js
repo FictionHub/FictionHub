@@ -1373,11 +1373,12 @@ function initNewSystems() {
 // Source manager callbacks
 function onSourceChange(newSource, oldSource) {
   console.log("[app] Source changed:", newSource?.api?.name, "->", newSource?.api?.name);
-  if (window.universalPlayer && newSource) {
+  if (window.universalPlayer && window.loadSource && newSource && activeMedia) {
     // Load the new source in the universal player
     const resumePos = getResumePosition();
-    window.universalPlayer.loadSource(newSource, activeMedia, { resumePosition: resumePos });
-    updateSourceIndicator(newSource);
+    window.loadSource(newSource, activeMedia, { resumePosition: resumePos })
+      .then(() => updateSourceIndicator(newSource))
+      .catch(onSourceError);
   }
 }
 
@@ -1411,7 +1412,7 @@ function onPlayerPlaybackStart(source) {
 
 function onPlayerPlaybackEnd() {
   // Handle next episode auto-play
-  saveProgress(true);
+  // universal-player.js saves the final position before invoking this hook.
 }
 
 function onPlayerError(error) {
