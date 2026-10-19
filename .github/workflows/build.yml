@@ -125,6 +125,10 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          api-level: 36
+          ndk-version: r27c
+          build-tools-version: 36.0.0
 
       - name: Install build tooling (root)
         run: npm install
