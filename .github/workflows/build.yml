@@ -23,7 +23,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: 'npm'
 
       - name: Install build tooling (root)
@@ -113,7 +113,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 22
           cache: 'npm'
 
       - name: Set up JDK 17
@@ -123,15 +123,8 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
-      - name: Set up Android SDK (manual - more reliable)
-        run: |
-          # Install Android SDK components
-          sudo apt-get update && sudo apt-get install -y android-sdk jq
-          echo "ANDROID_HOME=/usr/lib/android-sdk" >> $GITHUB_ENV
-          echo "ANDROID_SDK_ROOT=/usr/lib/android-sdk" >> $GITHUB_ENV
-          # Install required components
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools" "ndk;27.0.12077973" 2>/dev/null || true
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Install build tooling (root)
         run: npm install
@@ -140,14 +133,11 @@ jobs:
         working-directory: app-src
         run: npm install
 
-      - name: Add Android platform (Capacitor)
-        working-directory: app-src
-        # Use the locally installed @capacitor/cli (v7, matches @capacitor/android v7)
-        # --no-install forces the local binary instead of npx fetching the latest CLI.
-        run: npx --no-install cap add android
+      - name: Copy web assets to Android (Capacitor sync)
+        run: npx --no-install cap sync android
 
       - name: Make gradlew executable
-        run: chmod +x app-src/android/gradlew
+        run: chmod +x android/gradlew
 
       - name: Stamp Android version
         shell: bash
@@ -162,30 +152,22 @@ jobs:
           echo "FH_VERSION=$ver" >> $GITHUB_ENV
           echo "Building Android version $ver"
 
-      - name: Copy web assets to Android (Capacitor sync)
-        working-directory: app-src
-        # Use the locally installed @capacitor/cli (v7) to match @capacitor/android v7.
-        run: |
-          npx --no-install cap sync android
-        env:
-          CAPACITOR_ANDROID_KEEP_ASSETS: 1
-
       - name: Build Release APK
-        working-directory: app-src/android
+        working-directory: android
         run: |
           ./gradlew assembleRelease -PversionCode=${{ github.run_number }} -PversionName=${{ env.FH_VERSION }} --no-daemon --stacktrace
         timeout-minutes: 30
 
       - name: Find APK
         id: find-apk
-        working-directory: app-src
+        working-directory: android
         run: |
           echo "=== Searching for APKs ==="
-          find android/app/build/outputs -name "*.apk" -type f 2>/dev/null
-          APK_PATH=$(find android/app/build/outputs/apk/release -name "*.apk" -not -name "*unsigned*" | head -1)
+          find app/build/outputs -name "*.apk" -type f 2>/dev/null
+          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" -not -name "*unsigned*" | head -1)
           if [ -z "$APK_PATH" ]; then
             echo "APK not found in release, checking debug..."
-            APK_PATH=$(find android/app/build/outputs -name "*.apk" -not -name "*unsigned*" | head -1)
+            APK_PATH=$(find app/build/outputs -name "*.apk" -not -name "*unsigned*" | head -1)
           fi
           if [ -z "$APK_PATH" ]; then
             echo "No APK found anywhere!"
