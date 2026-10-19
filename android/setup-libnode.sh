@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Script to download nodejs-mobile prebuilt binaries and set up libnode for nodejs-server module
+# Run from the android/ directory
 
 set -e
 
 NODEJS_MOBILE_VERSION="18.20.4"
 ZIP_URL="https://github.com/nodejs-mobile/nodejs-mobile/releases/download/v${NODEJS_MOBILE_VERSION}/nodejs-mobile-v${NODEJS_MOBILE_VERSION}-android.zip"
-LIBNODE_DIR="android/nodejs-server/src/main/libnode"
+# When run from android/, the libnode dir is nodejs-server/src/main/libnode
+LIBNODE_DIR="nodejs-server/src/main/libnode"
 
 echo "Setting up libnode for nodejs-server module..."
 
