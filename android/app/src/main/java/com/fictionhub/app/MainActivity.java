@@ -5,16 +5,16 @@ import android.os.Bundle;
 import android.util.Log;
 
 import com.getcapacitor.BridgeActivity;
-import com.getcapacitor.Plugin;
 import com.fictionhub.nodejsserver.NodeJSServerPlugin;
-
-import java.util.ArrayList;
 
 public class MainActivity extends BridgeActivity {
     private static final String TAG = "FictionHubMainActivity";
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Capacitor 8 registers custom plugins through BridgeActivity's plugin
+        // registry. This must happen before super.onCreate() creates the bridge.
+        registerPlugin(NodeJSServerPlugin.class);
         super.onCreate(savedInstanceState);
         
         // Enable hardware acceleration for smooth video playback
@@ -29,43 +29,5 @@ public class MainActivity extends BridgeActivity {
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         
         Log.d(TAG, "FictionHub MainActivity created");
-    }
-
-    @Override
-    protected ArrayList<Plugin> createPlugins() {
-        ArrayList<Plugin> plugins = super.createPlugins();
-        
-        // Add our custom Node.js server plugin
-        plugins.add(new NodeJSServerPlugin());
-        
-        return plugins;
-    }
-
-    @Override
-    protected void onStart() {
-        super.onStart();
-        Log.d(TAG, "onStart - Starting Node.js server");
-        
-        // Start the local server automatically
-        if (getBridge() != null) {
-            getBridge().getPlugin("NodeJSServer").execute("startServer");
-        }
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        Log.d(TAG, "onStop");
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        Log.d(TAG, "onDestroy - Stopping Node.js server");
-        
-        // Stop the server when app is fully destroyed
-        if (getBridge() != null) {
-            getBridge().getPlugin("NodeJSServer").execute("stopServer");
-        }
     }
 }
