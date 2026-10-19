@@ -21,16 +21,16 @@ android {
     // Signing configuration - only applied if keystore env vars are provided
     def keystorePath = System.getenv("KEYSTORE_PATH")
     def keystorePassword = System.getenv("KEYSTORE_PASSWORD")
-    def keyAlias = System.getenv("KEY_ALIAS")
+    def keyAliasName = System.getenv("KEY_ALIAS")
     def keyPassword = System.getenv("KEY_PASSWORD")
-    def hasKeystore = keystorePath && keystorePassword && keyAlias && keyPassword
+    def hasKeystore = keystorePath && keystorePassword && keyAliasName && keyPassword
 
     if (hasKeystore) {
         signingConfigs {
             release {
                 storeFile file(keystorePath)
                 storePassword keystorePassword
-                keyAlias keyAlias
+                keyAlias keyAliasName
                 keyPassword keyPassword
             }
         }
