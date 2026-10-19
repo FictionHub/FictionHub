@@ -137,14 +137,16 @@ jobs:
         working-directory: app-src
         run: npm install
 
-      - name: Add Android platform (Capacitor)
-        run: npx --no-install cap add android
-
-      - name: Copy web assets to Android (Capacitor sync)
-        run: npx --no-install cap sync android
-
       - name: Make gradlew executable
         run: chmod +x android/gradlew
+
+      - name: Copy web assets to Android public assets
+        run: |
+          mkdir -p android/app/src/main/assets/public
+          cp -r app-src/www/* android/app/src/main/assets/public/
+          cp app-src/*.js android/app/src/main/assets/public/
+          cp app-src/*.css android/app/src/main/assets/public/
+          cp app-src/*.html android/app/src/main/assets/public/
 
       - name: Stamp Android version
         shell: bash
