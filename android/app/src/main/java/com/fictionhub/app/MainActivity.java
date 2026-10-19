@@ -5,16 +5,16 @@ import android.os.Bundle;
 import android.util.Log;
 
 import com.getcapacitor.BridgeActivity;
-import com.getcapacitor.Plugin;
 import com.fictionhub.nodejsserver.NodeJSServerPlugin;
-
-import java.util.ArrayList;
 
 public class MainActivity extends BridgeActivity {
     private static final String TAG = "FictionHubMainActivity";
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Capacitor 8 registers custom plugins through BridgeActivity's plugin
+        // registry. This must happen before super.onCreate() creates the bridge.
+        registerPlugin(NodeJSServerPlugin.class);
         super.onCreate(savedInstanceState);
         
         // Enable hardware acceleration for smooth video playback
@@ -31,8 +31,8 @@ public class MainActivity extends BridgeActivity {
         Log.d(TAG, "FictionHub MainActivity created");
     }
     
-    // Note: In Capacitor 8, plugins are auto-discovered via @CapacitorPlugin annotation.
-    // The NodeJSServerPlugin will be loaded automatically.
+    // Note: In Capacitor 8, plugins are registered via registerPlugin() in onCreate().
+    // The NodeJSServerPlugin is registered above.
     // To start the Node.js server, call the "startServer" method from JavaScript:
     //   const { NodeJSServer } = Capacitor.Plugins;
     //   await NodeJSServer.startServer();
