@@ -19,8 +19,8 @@ dependencies {
     implementation project(':capacitor-splash-screen')
     implementation project(':capacitor-status-bar')
 
-}
 
+}
 
 if (hasProperty('postBuildExtras')) {
   postBuildExtras()
