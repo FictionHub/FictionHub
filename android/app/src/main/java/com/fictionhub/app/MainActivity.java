@@ -30,4 +30,16 @@ public class MainActivity extends BridgeActivity {
         
         Log.d(TAG, "FictionHub MainActivity created");
     }
+    
+    // Note: In Capacitor 8, plugins are registered via registerPlugin() in onCreate().
+    // The NodeJSServerPlugin is registered above.
+    // To start the Node.js server, call the "startServer" method from JavaScript:
+    //   const { NodeJSServer } = Capacitor.Plugins;
+    //   await NodeJSServer.startServer();
+    //
+    // Or use the Capacitor App lifecycle event:
+    //   import { App } from '@capacitor/app';
+    //   App.addListener('appStateChange', ({ isActive }) => {
+    //     if (isActive) { NodeJSServer.startServer(); }
+    //   });
 }
