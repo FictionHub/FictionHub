@@ -63,9 +63,12 @@ function createPlayerUI() {
   container.innerHTML = `
     <div class="up-stage" id="upStage">
       <video id="upVideo" playsinline 
+        webkit-playsinline
         x-webkit-airplay="allow" 
         disablepictureinpicture="false"
-        controlslist="nodownload nofullscreen noremoteplayback"></video>
+        crossorigin="anonymous"
+        controlslist="nodownload nofullscreen noremoteplayback"
+        style="width: 100%; height: 100%; object-fit: contain; background: #000;"></video>
       <iframe id="upEmbedFrame" class="hidden" allowfullscreen 
         allow="autoplay; encrypted-media; fullscreen; picture-in-page">
       </iframe>
@@ -253,20 +256,38 @@ async function loadNative(source, media) {
 }
 
 async function playHLS(m3u8Url) {
+  console.log("[universal-player] playHLS called with:", m3u8Url);
+  
+  const isAndroidWebView = /Android/.test(navigator.userAgent) && /wv/.test(navigator.userAgent);
+  console.log("[universal-player] isAndroidWebView:", isAndroidWebView);
+  
   if (universalPlayer.hls) {
     try { universalPlayer.hls.destroy(); } catch {}
     universalPlayer.hls = null;
   }
   universalPlayer.video.src = "";
   universalPlayer.video.load();
+  
+  // Set video attributes for Android WebView
+  universalPlayer.video.muted = false;
+  universalPlayer.video.volume = universalPlayer.settings.volume || 1;
+  universalPlayer.video.playsInline = true;
 
   if (window.Hls && Hls.isSupported()) {
     universalPlayer.hls = new Hls({
-      enableWorker: true,
+      enableWorker: !isAndroidWebView,
       lowLatencyMode: false,
       backBufferLength: 90,
-      manifestLoadingMaxRetry: 2,
-      manifestLoadingRetryDelay: 500,
+      manifestLoadingMaxRetry: 3,
+      manifestLoadingRetryDelay: 1000,
+      levelLoadingMaxRetry: 3,
+      levelLoadingRetryDelay: 1000,
+      fragLoadingMaxRetry: 3,
+      fragLoadingRetryDelay: 1000,
+      startLevel: -1,
+      capLevelToPlayerSize: true,
+      maxBufferLength: 30,
+      maxMaxBufferLength: 60,
     });
     
     universalPlayer.hls.on(Hls.Events.MANIFEST_PARSED, (e, data) => {
@@ -304,13 +325,61 @@ async function playHLS(m3u8Url) {
     });
 
     universalPlayer.hls.on(Hls.Events.ERROR, (e, data) => {
-      console.warn("[universal-player] HLS error:", data.type, data.details, data.fatal);
+      console.warn("[universal-player] HLS error:", data.type, data.details, "fatal:", data.fatal);
       if (data.fatal) {
-        if (data.details === "manifestLoadError" || data.details === "levelLoadError") {
-          showOverlay("Stream unavailable, trying next source...");
+        if (data.details === "manifestLoadError") {
+          console.error("[universal-player] Fatal manifest load error");
+          showOverlay("Failed to load stream manifest");
+          tryNextSource();
+        } else if (data.details === "levelLoadError") {
+          console.warn("[universal-player] Level load error, retrying...");
+          universalPlayer.hls.startLoad();
+        } else if (data.details === "fragLoadError") {
+          console.warn("[universal-player] Fragment load error, retrying...");
+          universalPlayer.hls.startLoad();
+        } else {
+          console.error("[universal-player] Fatal HLS error:", data);
+          hideOverlay();
           universalPlayer.callbacks.onError?.(data);
         }
       }
+    });
+    
+    // Add manifest parsed handler
+    universalPlayer.hls.on(Hls.Events.MANIFEST_PARSED, (e, data) => {
+      console.log("[universal-player] Manifest parsed, levels:", data.levels.length);
+      universalPlayer.qualityLevels = universalPlayer.hls.levels.map((l, i) => ({
+        index: i,
+        height: l.height,
+        bitrate: l.bitrate,
+        label: l.height ? `${l.height}p` : `Level ${i+1}`,
+      }));
+      populateQualityMenu();
+      if (universalPlayer.settings.defaultQuality === "auto") {
+        universalPlayer.hls.currentLevel = -1;
+      } else {
+        const idx = universalPlayer.qualityLevels.findIndex(q => q.label === universalPlayer.settings.defaultQuality);
+        if (idx >= 0) universalPlayer.hls.currentLevel = idx;
+      }
+      if (universalPlayer.resumePosition > 5) {
+        universalPlayer.video.currentTime = universalPlayer.resumePosition;
+      }
+      if (universalPlayer.settings.autoplay) {
+        universalPlayer.video.play().catch((err) => {
+          console.warn("[universal-player] Autoplay blocked:", err);
+          universalPlayer.video.muted = true;
+          universalPlayer.video.play().catch(() => {});
+        });
+      }
+      hideOverlay();
+    });
+    
+    universalPlayer.hls.on(Hls.Events.LEVEL_SWITCHED, (e, data) => {
+      console.log("[universal-player] Level switched to:", data.level);
+    });
+    
+    universalPlayer.hls.on(Hls.Events.FRAG_LOADED, (e, data) => {
+      console.log("[universal-player] Fragment loaded:", data.frag.sn);
     });
 
     universalPlayer.hls.loadSource(m3u8Url);
