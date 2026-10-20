@@ -14,6 +14,7 @@ public class NodeJSBundle {
         try {
             System.loadLibrary("nodejs-server-native-lib");
             sLibraryLoaded = true;
+            Log.d(TAG, "Native library loaded successfully");
         } catch (UnsatisfiedLinkError e) {
             Log.e(TAG, "Failed to load native library: " + e.getMessage());
             sLibraryLoaded = false;
@@ -56,6 +57,10 @@ public class NodeJSBundle {
         Log.d(TAG, "Node.js stopped");
     }
 
+    public boolean isRunning() {
+        return isRunningNative();
+    }
+
     // Called from native code via JNI
     public void logFromNative(String message) {
         Log.d(TAG, "[NodeJS] " + message);
@@ -65,6 +70,7 @@ public class NodeJSBundle {
     private native int startNodeWithArguments(String[] arguments);
     private native void stopNode();
     private native void redirectOutputToLogcat(boolean enable);
+    private native boolean isRunningNative();
 
     // Compatibility methods for existing code
     public JSObjectWrapper getGlobal(String name) {

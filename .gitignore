@@ -39,3 +39,5 @@ build-output.log
 build-error.log
 *.log
 node_modules/
+android/nodejs-server/src/main/libnode/extracted/
+android/nodejs-server/src/main/libnode/
