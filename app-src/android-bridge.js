@@ -61,19 +61,69 @@
     if (!isAndroid()) return;
     
     // The native server runs on localhost:8787, same as desktop
-    // But we need to ensure we're not using the Capacitor HTTP server
+    // But the web app loads from https://fictionhub.local (Capacitor server)
+    // So we need to rewrite API requests to go to the Node.js server
     window.FH_ANDROID_NATIVE_SERVER = true;
+    window.FH_NATIVE_SERVER_URL = 'http://localhost:8787';
     
-    // Patch fetch to handle cleartext traffic
+    // List of API paths that should go to the Node.js server
+    const API_PATHS = [
+      '/__stream/',
+      '/__proxy',
+      '/__video/',
+      '/__backup',
+      '/__video/download/',
+      '/__video/season-download/',
+      '/__video/delete',
+    ];
+
+    function shouldProxyToNative(url) {
+      try {
+        const u = new URL(url, window.location.href);
+        return API_PATHS.some(path => u.pathname.startsWith(path));
+      } catch {
+        return false;
+      }
+    }
+
+    function rewriteUrl(url) {
+      try {
+        const u = new URL(url, window.location.href);
+        return 'http://localhost:8787' + u.pathname + u.search;
+      } catch {
+        return url;
+      }
+    }
+
+    // Patch fetch
     const originalFetch = window.fetch;
     window.fetch = async function(input, init) {
-      let url = typeof input === 'string' ? input : input.url;
-      if (url && url.startsWith('http://localhost:8787')) {
-        // On Android, we might need to use 10.0.2.2 for the emulator
-        // or localhost for real devices. Capacitor handles this.
+      let url = typeof input === 'string' ? input : input?.url;
+      if (url && shouldProxyToNative(url)) {
+        const newUrl = rewriteUrl(url);
+        console.log('[android-bridge] Rewriting fetch:', url, '->', newUrl);
+        if (typeof input === 'string') {
+          input = newUrl;
+        } else if (input && typeof input === 'object') {
+          input = new Request(newUrl, input);
+        }
       }
       return originalFetch.apply(this, arguments);
     };
+
+    // Patch XMLHttpRequest (used by some libraries)
+    const originalXHROpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url, ...args) {
+      if (url && shouldProxyToNative(url)) {
+        const newUrl = rewriteUrl(url);
+        console.log('[android-bridge] Rewriting XHR:', url, '->', newUrl);
+        url = newUrl;
+      }
+      return originalXHROpen.call(this, method, url, ...args);
+    };
+
+    // Also patch the global server base if used anywhere
+    window.FH_SERVER_BASE = 'http://localhost:8787';
   }
 
   // Initialize on load
