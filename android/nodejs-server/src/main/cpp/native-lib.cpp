@@ -6,8 +6,12 @@
 #include <jni.h>
 #include <string>
 #include <cstdlib>
+#include <cstring>
+#include <cerrno>
 #include <android/log.h>
 #include <pthread.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 #include "node.h"
 
@@ -38,17 +42,68 @@ static JNIEnv* getJNIEnv() {
 // Native method: startNodeWithArguments
 extern "C" JNIEXPORT jint JNICALL
 Java_org_nodejs_mobile_NodeJSBundle_startNodeWithArguments(
-    JNIEnv* env,
-    jobject thiz,
-    jobjectArray arguments) {
+    JNIEnv* env, jobject thiz, jobjectArray arguments) {
 
     // Cache the Java object for callbacks
     g_nodejs_bundle_obj = env->NewGlobalRef(thiz);
-    
+
     // Get the log method ID
     jclass cls = env->GetObjectClass(thiz);
     g_log_method_id = env->GetMethodID(cls, "logFromNative", "(Ljava/lang/String;)V");
     env->DeleteLocalRef(cls);
+
+    // Get filesDir from Java context
+    cls = env->GetObjectClass(thiz);
+    jmethodID getFilesDirId = env->GetMethodID(cls, "getFilesDir", "()Ljava/io/File;");
+    jobject filesDirObj = env->CallObjectMethod(thiz, getFilesDirId);
+    jclass fileClass = env->GetObjectClass(filesDirObj);
+    jmethodID getAbsolutePathId = env->GetMethodID(fileClass, "getAbsolutePath", "()Ljava/lang/String;");
+    jstring filesDirPath = (jstring)env->CallObjectMethod(filesDirObj, getAbsolutePathId);
+    const char* nativeFilesDir = env->GetStringUTFChars(filesDirPath, 0);
+
+    __android_log_print(ANDROID_LOG_INFO, ADBTAG, "Files dir: %s", nativeFilesDir);
+
+    // Build server directory path
+    std::string serverDir = std::string(nativeFilesDir) + "/server";
+
+    // Ensure server directory exists
+    struct stat st;
+    if (stat(serverDir.c_str(), &st) != 0) {
+        __android_log_print(ANDROID_LOG_ERROR, ADBTAG, "Server dir does not exist: %s", serverDir.c_str());
+        env->ReleaseStringUTFChars(filesDirPath, nativeFilesDir);
+        return -1;
+    }
+
+    // Get external files dir for video/manga (passed from Java via System.setProperty, but we set here too)
+    // We'll set these in the native process
+
+    // chdir to server directory BEFORE node::Start
+    if (chdir(serverDir.c_str()) != 0) {
+        __android_log_print(ANDROID_LOG_ERROR, ADBTAG, "chdir failed: %s (errno=%d)", strerror(errno), errno);
+        env->ReleaseStringUTFChars(filesDirPath, nativeFilesDir);
+        return -1;
+    }
+    __android_log_print(ANDROID_LOG_INFO, ADBTAG, "Changed working directory to: %s", serverDir.c_str());
+
+    // Set required environment variables for Node.js process
+    std::string nodePath = serverDir + ":" + serverDir + "/node_modules";
+    setenv("NODE_PATH", nodePath.c_str(), 1);
+    setenv("FH_DATA_DIR", nativeFilesDir, 1);
+
+    // Set PORT
+    setenv("PORT", "8787", 1);
+
+    // Set video and manga dirs
+    std::string videoDir = std::string(nativeFilesDir) + "/FictionHub/Video Downloads";
+    std::string mangaDir = std::string(nativeFilesDir) + "/FictionHub/Manga Downloads";
+    setenv("FH_VIDEO_DIR", videoDir.c_str(), 1);
+    setenv("FH_MANGA_DIR", mangaDir.c_str(), 1);
+
+    // Ensure directories exist
+    mkdir(videoDir.c_str(), 0755);
+    mkdir(mangaDir.c_str(), 0755);
+
+    env->ReleaseStringUTFChars(filesDirPath, nativeFilesDir);
 
     // argc to pass to Node.
     jsize argument_count = env->GetArrayLength(arguments);
@@ -92,6 +147,8 @@ Java_org_nodejs_mobile_NodeJSBundle_startNodeWithArguments(
         current_args_position += strlen(current_args_position) + 1;
     }
 
+    __android_log_print(ANDROID_LOG_INFO, ADBTAG, "Starting Node.js with %d args", argument_count);
+
     // Start Node.js in a background thread
     pthread_t thread;
     struct ThreadArgs {
@@ -99,11 +156,15 @@ Java_org_nodejs_mobile_NodeJSBundle_startNodeWithArguments(
         char** argv;
     };
     ThreadArgs* thread_args = new ThreadArgs{argument_count, argv};
-    
+
     pthread_create(&thread, nullptr, [](void* args) -> void* {
         ThreadArgs* ta = static_cast<ThreadArgs*>(args);
+        __android_log_print(ANDROID_LOG_INFO, ADBTAG, "Calling node::Start...");
+
         const int exit_code = node::Start(ta->argc, ta->argv);
-        
+
+        __android_log_print(ANDROID_LOG_INFO, ADBTAG, "node::Start returned: %d", exit_code);
+
         // Notify Java that Node.js has exited
         JNIEnv* env = getJNIEnv();
         if (env && g_nodejs_bundle_obj && g_log_method_id) {
@@ -112,13 +173,13 @@ Java_org_nodejs_mobile_NodeJSBundle_startNodeWithArguments(
             env->CallVoidMethod(g_nodejs_bundle_obj, g_log_method_id, jmsg);
             env->DeleteLocalRef(jmsg);
         }
-        
+
         // Cleanup
         free(ta->argv[0]); // args_buffer
         delete ta;
         return nullptr;
     }, thread_args);
-    
+
     pthread_detach(thread);
 
     return 0; // Success
@@ -127,20 +188,13 @@ Java_org_nodejs_mobile_NodeJSBundle_startNodeWithArguments(
 // Native method: stopNode
 extern "C" JNIEXPORT void JNICALL
 Java_org_nodejs_mobile_NodeJSBundle_stopNode(
-    JNIEnv* env,
-    jobject thiz) {
-    // Node.js doesn't have a clean shutdown API, but we can try to terminate
-    // For now, just log
+    JNIEnv* env, jobject thiz) {
     __android_log_print(ANDROID_LOG_INFO, ADBTAG, "StopNode called - Node.js doesn't support clean shutdown");
 }
 
 // Native method: redirectOutputToLogcat
 extern "C" JNIEXPORT void JNICALL
 Java_org_nodejs_mobile_NodeJSBundle_redirectOutputToLogcat(
-    JNIEnv* env,
-    jobject thiz,
-    jboolean enable) {
-    // This would require redirecting stdout/stderr in Node.js
-    // For now, just log
+    JNIEnv* env, jobject thiz, jboolean enable) {
     __android_log_print(ANDROID_LOG_INFO, ADBTAG, "redirectOutputToLogcat: %d", enable);
 }

@@ -54,6 +54,8 @@ android {
         jniLibs {
             useLegacyPackaging = true
         }
+        pickFirst '**/libnode.so'
+        pickFirst '**/libnodejs-server-native-lib.so'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8

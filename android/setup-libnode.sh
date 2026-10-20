@@ -39,6 +39,14 @@ cp "extracted/bin/arm64-v8a/libnode.so" "bin/arm64-v8a/" 2>/dev/null && echo "  
 cp "extracted/bin/x86/libnode.so" "bin/x86/" 2>/dev/null && echo "  x86: OK" || echo "  x86: NOT FOUND"
 cp "extracted/bin/x86_64/libnode.so" "bin/x86_64/" 2>/dev/null && echo "  x86_64: OK" || echo "  x86_64: NOT FOUND"
 
+# Copy ICU/V8 data files if present
+echo "Copying ICU/V8 data files..."
+for abi in armeabi-v7a arm64-v8a x86 x86_64; do
+    if [ -d "extracted/bin/${abi}" ]; then
+        cp -r "extracted/bin/${abi}/"* "bin/${abi}/" 2>/dev/null || true
+    fi
+done
+
 # Copy include headers
 echo "Copying include headers..."
 rm -rf include

@@ -33,13 +33,18 @@ set_target_properties( # Specifies the target library.
                        # Provides the path to the library you want to import.
                        ${CMAKE_SOURCE_DIR}/../libnode/bin/${ANDROID_ABI}/libnode.so )
 
+# Ensure libnode.so is packaged in the APK
+set_target_properties(nodejs-server-native-lib PROPERTIES
+  LIBRARY_OUTPUT_DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}
+)
+
 # Searches for a specified prebuilt library and stores the path as a
 # variable.
 find_library( # Sets the name of the path variable.
               log-lib
 
               # Specifies the name of the NDK library that
-              # you want CMake to locate.
+              # you want to locate.
               log )
 
 # Specifies libraries CMake should link to your target library.
