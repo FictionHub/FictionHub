@@ -147,31 +147,29 @@ public class NodeJSServerPlugin extends Plugin {
     @PluginMethod
     public void restartServer(PluginCall call) {
         Log.d(TAG, "restartServer called");
-        stopServer(new PluginCall() {
-            @Override
-            public void resolve() {
-                // Small delay to ensure stop completes
-                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                    startServer(call);
-                }, 500);
+        // Stop without resolving the call, then start again
+        if (isServerRunning) {
+            if (nodeJSBundle != null) {
+                try {
+                    if (nodeJSBundle.isRunning()) {
+                        nodeJSBundle.stopNodeJS();
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error stopping Node.js", e);
+                }
+                nodeJSBundle = null;
             }
-            @Override
-            public void reject(String error) {
-                call.reject(error);
+            isServerRunning = false;
+            try {
+                getContext().stopService(new Intent(getContext(), NodeJSServerService.class));
+            } catch (Exception e) {
+                Log.w(TAG, "Error stopping service", e);
             }
-            @Override
-            public void resolve(JSObject data) {
-                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                    startServer(call);
-                }, 500);
-            }
-            @Override
-            public String getMethodName() { return "restartServer"; }
-            @Override
-            public String getCallbackId() { return call.getCallbackId(); }
-            @Override
-            public JSObject getData() { return call.getData(); }
-        });
+        }
+        // Small delay to ensure stop completes, then start again
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            startServer(call);
+        }, 500);
     }
 
     private void createNotificationChannel() {
