@@ -1,5 +1,21 @@
 apply plugin: 'com.android.library'
 
+// The Node.js server that runs inside the app is a copy of app-src/server.js
+// (and friends). When that copy drifts from app-src, the Android app serves
+// an OLD server — the player then hits a stale /__stream/resolve without CORS
+// headers and the screen stays black. Sync it automatically on every build.
+def appSrcDir = file('../../app-src')
+def serverAssetsDir = file('src/main/assets/server')
+
+tasks.register('syncServerAssets', Copy) {
+    from appSrcDir
+    into serverAssetsDir
+    // Don't ship build output or the legacy duplicate web/ folder.
+    exclude 'www/**', 'node_modules/**', 'build/**', 'dist/**', 'fh-backup.json'
+    exclude '*.log', 'package-lock.json'
+    include '**/*'
+}
+
 android {
     namespace 'com.fictionhub.nodejsserver'
     compileSdk rootProject.ext.compileSdkVersion
@@ -35,6 +51,8 @@ android {
             jniLibs.srcDirs = ['src/main/libnode/bin']
         }
     }
+    // Make sure the bundled server is in sync with app-src before packaging.
+    tasks.named('preBuild').configure { dependsOn('syncServerAssets') }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8

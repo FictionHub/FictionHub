@@ -146,11 +146,25 @@ jobs:
 
       - name: Copy web assets to Android public assets
         run: |
-          mkdir -p android/app/src/main/assets/public
-          cp -r app-src/www/* android/app/src/main/assets/public/
-          cp app-src/*.js android/app/src/main/assets/public/
-          cp app-src/*.css android/app/src/main/assets/public/
-          cp app-src/*.html android/app/src/main/assets/public/
+          # app-src/ is the single source of truth for the web app. Copying
+          # app-src/www/* here first used to publish a stale duplicate of the
+          # UI (missing universal-player.js, source-manager.js, scraper.js),
+          # which is what left the player as a black screen on Android.
+          if npx cap sync android; then
+            echo "cap sync OK"
+          else
+            echo "cap sync failed — falling back to manual copy"
+            mkdir -p android/app/src/main/assets/public
+            cp app-src/*.js android/app/src/main/assets/public/
+            cp app-src/*.css android/app/src/main/assets/public/
+            cp app-src/*.html android/app/src/main/assets/public/
+          fi
+          ls android/app/src/main/assets/public/ | head -40
+          # Fail loudly if the player modules are missing from the package.
+          for f in universal-player.js source-manager.js scraper.js server.js hls.min.js; do
+            test -f "android/app/src/main/assets/public/$f" || { echo "MISSING $f"; exit 1; }
+          done
+          echo "player modules present"
 
       - name: Stamp Android version
         shell: bash

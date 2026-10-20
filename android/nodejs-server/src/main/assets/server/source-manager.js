@@ -27,9 +27,48 @@ let sourceManager = {
   },
   userPreferences: {},
   loadTimes: {},
+
+  // These are also exposed as globals (window.failover, window.reportPlaybackStarted).
+  // Keep them as real methods on the manager too, so both
+  // `sourceManager.failover()` and `window.failover()` work — the app code
+  // calls them as methods, and a missing method used to throw a TypeError
+  // that aborted playback right after the stream had already started.
+  reportPlaybackStarted() {
+    sourceManager.playbackStarted = true;
+    clearTimeout(sourceManager.playbackTimer);
+    if (sourceManager.callbacks.onPlaybackStart) {
+      sourceManager.callbacks.onPlaybackStart(getCurrentSource());
+    }
+  },
+
+  async failover(reason = "Playback failed") {
+    const oldSource = getCurrentSource();
+    sourceManager.currentIndex++;
+    console.log(`[source-manager] Failing over from ${oldSource?.api?.name} to next source (reason: ${reason})`);
+
+    if (sourceManager.currentIndex >= sourceManager.currentSources.length) {
+      console.log("[source-manager] No more sources to try");
+      if (sourceManager.callbacks.onError) {
+        sourceManager.callbacks.onError("All sources exhausted");
+      }
+      return null;
+    }
+
+    const newSource = getCurrentSource();
+    if (sourceManager.callbacks.onSourceChange) {
+      sourceManager.callbacks.onSourceChange(newSource, oldSource);
+    }
+    return newSource;
+  },
 };
 
-function initSourceManager(registry, callbacks = {}) {
+// NOTE: keep this implementation under a name that is NOT re-exported to
+// window. A top-level `function initSourceManager` shares the global binding
+// with `window.initSourceManager`, so a wrapper that called `initSourceManager`
+// would call itself forever (RangeError: Maximum call stack size exceeded)
+// and abort the whole app-init chain — leaving the player container empty
+// (black screen).
+function createSourceManager(registry, callbacks = {}) {
   sourceManager.callbacks = { ...sourceManager.callbacks, ...callbacks };
   sourceManager.userPreferences = JSON.parse(localStorage.getItem("fh_source_prefs") || "{}");
   sourceManager.loadTimes = JSON.parse(localStorage.getItem("fh_source_loadtimes") || "{}");
@@ -119,9 +158,7 @@ function generateUrl(api, media) {
   return null;
 }
 
-window.initSourceManager = function initSourceManagerWrapper(registry, callbacks) {
-  return initSourceManager(registry, callbacks);
-};
+window.initSourceManager = createSourceManager;
 
 window.setActiveMedia = function setActiveMedia(media, registry) {
   sourceManager.activeMedia = media;
@@ -157,11 +194,7 @@ window.startPlaybackMonitor = function startPlaybackMonitor() {
 };
 
 window.reportPlaybackStarted = function reportPlaybackStarted() {
-  sourceManager.playbackStarted = true;
-  clearTimeout(sourceManager.playbackTimer);
-  if (sourceManager.callbacks.onPlaybackStart) {
-    sourceManager.callbacks.onPlaybackStart(getCurrentSource());
-  }
+  sourceManager.reportPlaybackStarted();
 };
 
 window.reportLoadTime = function reportLoadTime(sourceKey, loadTimeMs) {
@@ -172,23 +205,7 @@ window.reportLoadTime = function reportLoadTime(sourceKey, loadTimeMs) {
 };
 
 window.failover = async function failover(reason = "Playback failed") {
-  const oldSource = getCurrentSource();
-  sourceManager.currentIndex++;
-  console.log(`[source-manager] Failing over from ${oldSource?.api?.name} to next source (reason: ${reason})`);
-  
-  if (sourceManager.currentIndex >= sourceManager.currentSources.length) {
-    console.log("[source-manager] No more sources to try");
-    if (sourceManager.callbacks.onError) {
-      sourceManager.callbacks.onError("All sources exhausted");
-    }
-    return null;
-  }
-
-  const newSource = getCurrentSource();
-  if (sourceManager.callbacks.onSourceChange) {
-    sourceManager.callbacks.onSourceChange(newSource, oldSource);
-  }
-  return newSource;
+  return sourceManager.failover(reason);
 };
 
 window.selectSource = function selectSource(index) {

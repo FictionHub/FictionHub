@@ -38,6 +38,7 @@ let universalPlayer = {
     nextEpisodeAuto: true,
   },
 };
+let controlsHideTimer = null;
 
 function loadSettings() {
   try {
@@ -63,12 +64,10 @@ function createPlayerUI() {
   container.innerHTML = `
     <div class="up-stage" id="upStage">
       <video id="upVideo" playsinline 
-        webkit-playsinline
+        controls
         x-webkit-airplay="allow" 
         disablepictureinpicture="false"
-        crossorigin="anonymous"
-        controlslist="nodownload nofullscreen noremoteplayback"
-        style="width: 100%; height: 100%; object-fit: contain; background: #000;"></video>
+        controlslist="nodownload nofullscreen noremoteplayback"></video>
       <iframe id="upEmbedFrame" class="hidden" allowfullscreen 
         allow="autoplay; encrypted-media; fullscreen; picture-in-page">
       </iframe>
@@ -151,6 +150,37 @@ function bindEvents() {
   document.addEventListener("fullscreenchange", onFullscreenChange);
   document.addEventListener("keydown", onKeyDown);
   window.addEventListener("message", onEmbedMessage);
+
+  const stage = document.getElementById("upStage");
+  if (stage) {
+    const reveal = () => {
+      setControlsVisible(true);
+      scheduleControlsHide();
+    };
+    stage.addEventListener("pointermove", reveal);
+    stage.addEventListener("pointerdown", reveal);
+    stage.addEventListener("touchstart", reveal, { passive: true });
+    stage.addEventListener("mouseleave", () => scheduleControlsHide(500));
+  }
+  v.addEventListener("playing", () => scheduleControlsHide(1800));
+  v.addEventListener("pause", () => setControlsVisible(true));
+}
+
+function setControlsVisible(visible) {
+  const controls = document.getElementById("upControls");
+  const stage = document.getElementById("upStage");
+  if (!controls || !stage) return;
+  controls.classList.toggle("idle", !visible);
+  stage.classList.toggle("controls-idle", !visible);
+}
+
+function scheduleControlsHide(delay = 2200) {
+  clearTimeout(controlsHideTimer);
+  if (!universalPlayer.video || universalPlayer.video.paused || universalPlayer.isEmbed) {
+    setControlsVisible(true);
+    return;
+  }
+  controlsHideTimer = setTimeout(() => setControlsVisible(false), delay);
 }
 
 function bindControlEvents() {
@@ -176,6 +206,7 @@ window.initUniversalPlayer = function initUniversalPlayer(callbacks = {}) {
 };
 
 async function loadSource(source, media, options = {}) {
+  stopCurrentSource();
   universalPlayer.currentSource = source;
   universalPlayer.currentMedia = media;
   universalPlayer.isEmbed = !source.api?.native && !options.forceNative;
@@ -197,6 +228,8 @@ async function loadSource(source, media, options = {}) {
 async function loadEmbed(source, media) {
   universalPlayer.video.classList.add("hidden");
   universalPlayer.embedFrame.classList.remove("hidden");
+  document.getElementById("upControls")?.classList.add("hidden");
+  setControlsVisible(true);
   
   const url = source.url;
   if (!url) throw new Error("No URL for embed source");
@@ -206,9 +239,9 @@ async function loadEmbed(source, media) {
     window.fictionhub?.setEmbedHost?.(universalPlayer.embedHost);
   } catch {}
 
-  const proxyUrl = `/__proxy?url=${encodeURIComponent(url)}`;
-  universalPlayer.embedFrame.src = proxyUrl;
-  
+  // Video providers are intentionally not part of the manga proxy allowlist.
+  // Load the provider directly in the iframe; Electron's frame-navigation
+  // guard and request blocker still protect the top-level app from redirects.
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("Embed load timeout")), 20000);
     universalPlayer.embedFrame.onload = () => {
@@ -224,19 +257,46 @@ async function loadEmbed(source, media) {
       clearTimeout(timeout);
       reject(new Error("Embed iframe error"));
     };
+    // Register the handlers before navigation. Cached/local responses can
+    // complete synchronously enough to otherwise miss the load event and
+    // leave the player black until the timeout fires.
+    universalPlayer.embedFrame.src = url;
   });
 }
 
 async function loadNative(source, media) {
   universalPlayer.embedFrame.classList.add("hidden");
   universalPlayer.video.classList.remove("hidden");
+  document.getElementById("upControls")?.classList.remove("hidden");
+  setControlsVisible(true);
   
   if (!source.api?.native) {
     universalPlayer.isEmbed = true;
     return loadEmbed(source, media);
   }
 
+  // Notify outside the try/catch on purpose. A throwing callback (e.g. a bug
+  // in the app's onPlaybackStart handler) must not be mistaken for a failed
+  // stream — that used to discard a perfectly good HLS session and swap in a
+  // different source, leaving the user staring at a black screen.
+  const notifyStarted = (src) => {
+    try {
+      universalPlayer.callbacks.onPlaybackStart?.(src);
+    } catch (e) {
+      console.error("[universal-player] onPlaybackStart callback failed:", e);
+    }
+  };
+
   try {
+    // Offline downloads provide their own same-origin HLS playlist. Do not
+    // resolve them through the remote Atlantic stream endpoint.
+    if (source.url && (source.key === "local" || source.url.startsWith("/__video/"))) {
+      await playHLS(source.url);
+      hideOverlay();
+      notifyStarted(source);
+      startProgressTracking();
+      return;
+    }
     const { type, id, season, episode } = media;
     const res = await fetch(`/__stream/resolve?kind=${type}&id=${id}&season=${season}&episode=${episode}`);
     if (!res.ok) throw new Error("Resolve failed: " + res.status);
@@ -246,48 +306,58 @@ async function loadNative(source, media) {
     const m3u8Url = `/__stream/m3u8?u=${encodeURIComponent(resolved.m3u8)}&r=${encodeURIComponent(resolved.referer || "")}`;
     await playHLS(m3u8Url);
     hideOverlay();
-    universalPlayer.callbacks.onPlaybackStart?.(source);
+    notifyStarted(source);
     startProgressTracking();
   } catch (e) {
     console.error("[universal-player] Native load failed:", e);
+    if (source.key === "local" || source.url?.startsWith("/__video/")) throw e;
+    if (source.api?.native) {
+      // The native HLS resolver can be temporarily unavailable. Keep the
+      // player useful by falling back to the provider's own embed instead of
+      // leaving a black native stage with no URL to load.
+      const { type, id, season, episode } = media;
+      const url = type === "tv"
+        ? `https://atlantic.st/embed/tv/${id}/${season || 1}/${episode || 1}`
+        : `https://atlantic.st/embed/movie/${id}`;
+      universalPlayer.isEmbed = true;
+      return loadEmbed({ key: "native-embed-fallback", api: { name: "Atlantic", native: false }, url }, media);
+    }
     universalPlayer.isEmbed = true;
     return loadEmbed(source, media);
   }
 }
 
+function stopCurrentSource() {
+  clearProgressTimer();
+  clearTimeout(controlsHideTimer);
+  setControlsVisible(true);
+  if (universalPlayer.hls) {
+    try { universalPlayer.hls.destroy(); } catch {}
+    universalPlayer.hls = null;
+  }
+  if (universalPlayer.video) {
+    try { universalPlayer.video.pause(); } catch {}
+    universalPlayer.video.removeAttribute("src");
+    universalPlayer.video.load();
+  }
+  if (universalPlayer.embedFrame) universalPlayer.embedFrame.src = "about:blank";
+}
+
 async function playHLS(m3u8Url) {
-  console.log("[universal-player] playHLS called with:", m3u8Url);
-  
-  const isAndroidWebView = /Android/.test(navigator.userAgent) && /wv/.test(navigator.userAgent);
-  console.log("[universal-player] isAndroidWebView:", isAndroidWebView);
-  
   if (universalPlayer.hls) {
     try { universalPlayer.hls.destroy(); } catch {}
     universalPlayer.hls = null;
   }
   universalPlayer.video.src = "";
   universalPlayer.video.load();
-  
-  // Set video attributes for Android WebView
-  universalPlayer.video.muted = false;
-  universalPlayer.video.volume = universalPlayer.settings.volume || 1;
-  universalPlayer.video.playsInline = true;
 
   if (window.Hls && Hls.isSupported()) {
     universalPlayer.hls = new Hls({
-      enableWorker: !isAndroidWebView,
+      enableWorker: true,
       lowLatencyMode: false,
       backBufferLength: 90,
-      manifestLoadingMaxRetry: 3,
-      manifestLoadingRetryDelay: 1000,
-      levelLoadingMaxRetry: 3,
-      levelLoadingRetryDelay: 1000,
-      fragLoadingMaxRetry: 3,
-      fragLoadingRetryDelay: 1000,
-      startLevel: -1,
-      capLevelToPlayerSize: true,
-      maxBufferLength: 30,
-      maxMaxBufferLength: 60,
+      manifestLoadingMaxRetry: 2,
+      manifestLoadingRetryDelay: 500,
     });
     
     universalPlayer.hls.on(Hls.Events.MANIFEST_PARSED, (e, data) => {
@@ -325,61 +395,11 @@ async function playHLS(m3u8Url) {
     });
 
     universalPlayer.hls.on(Hls.Events.ERROR, (e, data) => {
-      console.warn("[universal-player] HLS error:", data.type, data.details, "fatal:", data.fatal);
+      console.warn("[universal-player] HLS error:", data.type, data.details, data.fatal);
       if (data.fatal) {
-        if (data.details === "manifestLoadError") {
-          console.error("[universal-player] Fatal manifest load error");
-          showOverlay("Failed to load stream manifest");
-          tryNextSource();
-        } else if (data.details === "levelLoadError") {
-          console.warn("[universal-player] Level load error, retrying...");
-          universalPlayer.hls.startLoad();
-        } else if (data.details === "fragLoadError") {
-          console.warn("[universal-player] Fragment load error, retrying...");
-          universalPlayer.hls.startLoad();
-        } else {
-          console.error("[universal-player] Fatal HLS error:", data);
-          hideOverlay();
-          universalPlayer.callbacks.onError?.(data);
-        }
+        showOverlay("Stream unavailable, trying next source...");
+        universalPlayer.callbacks.onError?.(data);
       }
-    });
-    
-    // Add manifest parsed handler
-    universalPlayer.hls.on(Hls.Events.MANIFEST_PARSED, (e, data) => {
-      console.log("[universal-player] Manifest parsed, levels:", data.levels.length);
-      universalPlayer.qualityLevels = universalPlayer.hls.levels.map((l, i) => ({
-        index: i,
-        height: l.height,
-        bitrate: l.bitrate,
-        label: l.height ? `${l.height}p` : `Level ${i+1}`,
-      }));
-      populateQualityMenu();
-      if (universalPlayer.settings.defaultQuality === "auto") {
-        universalPlayer.hls.currentLevel = -1;
-      } else {
-        const idx = universalPlayer.qualityLevels.findIndex(q => q.label === universalPlayer.settings.defaultQuality);
-        if (idx >= 0) universalPlayer.hls.currentLevel = idx;
-      }
-      if (universalPlayer.resumePosition > 5) {
-        universalPlayer.video.currentTime = universalPlayer.resumePosition;
-      }
-      if (universalPlayer.settings.autoplay) {
-        universalPlayer.video.play().catch((err) => {
-          console.warn("[universal-player] Autoplay blocked:", err);
-          universalPlayer.video.muted = true;
-          universalPlayer.video.play().catch(() => {});
-        });
-      }
-      hideOverlay();
-    });
-    
-    universalPlayer.hls.on(Hls.Events.LEVEL_SWITCHED, (e, data) => {
-      console.log("[universal-player] Level switched to:", data.level);
-    });
-    
-    universalPlayer.hls.on(Hls.Events.FRAG_LOADED, (e, data) => {
-      console.log("[universal-player] Fragment loaded:", data.frag.sn);
     });
 
     universalPlayer.hls.loadSource(m3u8Url);
@@ -793,20 +813,36 @@ function updateSourceIndicator(name, status) {
   ind.classList.remove("hidden");
 }
 
+// Keep the object returned by initUniversalPlayer useful to integration code
+// as well as the global functions used by the legacy wrappers.
+universalPlayer.loadSource = loadSource;
+universalPlayer.updateSourceIndicator = updateSourceIndicator;
+
 window.destroyPlayer = function destroyPlayer() {
   clearProgressTimer();
+  clearTimeout(controlsHideTimer);
+  controlsHideTimer = null;
   if (universalPlayer.hls) {
     try { universalPlayer.hls.destroy(); } catch {}
     universalPlayer.hls = null;
   }
-  universalPlayer.video.src = "";
-  universalPlayer.video.load();
-  universalPlayer.embedFrame.src = "";
+  // Navigation can call cleanup before the player has been initialized (for
+  // example the first switch to Home, or while the profile picker is closing).
+  // Cleanup must be idempotent; otherwise the null dereference aborts the
+  // navigation handler and makes every subsequent button appear dead.
+  if (universalPlayer.video) {
+    universalPlayer.video.src = "";
+    universalPlayer.video.load();
+  }
+  if (universalPlayer.embedFrame) universalPlayer.embedFrame.src = "";
   universalPlayer.currentSource = null;
   universalPlayer.currentMedia = null;
-  hideOverlay();
-  document.getElementById("upControls").classList.add("hidden");
-  document.getElementById("upSourceIndicator").classList.add("hidden");
+  const overlay = document.getElementById("upOverlay");
+  const controls = document.getElementById("upControls");
+  const indicator = document.getElementById("upSourceIndicator");
+  if (overlay) overlay.classList.add("hidden");
+  if (controls) controls.classList.add("hidden");
+  if (indicator) indicator.classList.add("hidden");
 };
 
 window.getPlayerState = function getPlayerState() {

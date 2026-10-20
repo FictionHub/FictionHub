@@ -10,14 +10,17 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- Startup intro: FictionHub logo animation (Pornhub-style) -->
+  <!-- Startup intro: bold black/orange wordmark animation -->
   <div id="intro" class="intro hidden">
-    <div class="intro-logo">
-      <span class="intro-word fiction">Fiction</span>
-      <span class="intro-word hub">Hub</span>
-    </div>
-    <div class="intro-progress">
-      <div class="intro-progress-fill"></div>
+    <div class="intro-stage">
+      <div class="intro-logo" aria-label="FictionHub">
+        <span class="intro-word fiction">Fiction</span><span class="intro-word hub">Hub</span>
+      </div>
+      <div class="intro-tagline">MOVIES&nbsp; · &nbsp;TV&nbsp; · &nbsp;ANIME&nbsp; · &nbsp;MANGA</div>
+      <div class="intro-progress" aria-hidden="true">
+        <div class="intro-progress-fill"></div>
+      </div>
+      <div class="intro-loading"><span></span><span></span><span></span></div>
     </div>
   </div>
   <header class="topbar">
@@ -298,5 +301,6 @@
   <script src="app.js"></script>
   <script src="manga.js"></script>
   <script src="update-ui.js"></script>
+  <script src="android-bridge.js"></script>
 </body>
 </html>

@@ -275,13 +275,25 @@ async function loadNative(source, media) {
     return loadEmbed(source, media);
   }
 
+  // Notify outside the try/catch on purpose. A throwing callback (e.g. a bug
+  // in the app's onPlaybackStart handler) must not be mistaken for a failed
+  // stream — that used to discard a perfectly good HLS session and swap in a
+  // different source, leaving the user staring at a black screen.
+  const notifyStarted = (src) => {
+    try {
+      universalPlayer.callbacks.onPlaybackStart?.(src);
+    } catch (e) {
+      console.error("[universal-player] onPlaybackStart callback failed:", e);
+    }
+  };
+
   try {
     // Offline downloads provide their own same-origin HLS playlist. Do not
     // resolve them through the remote Atlantic stream endpoint.
     if (source.url && (source.key === "local" || source.url.startsWith("/__video/"))) {
       await playHLS(source.url);
       hideOverlay();
-      universalPlayer.callbacks.onPlaybackStart?.(source);
+      notifyStarted(source);
       startProgressTracking();
       return;
     }
@@ -294,7 +306,7 @@ async function loadNative(source, media) {
     const m3u8Url = `/__stream/m3u8?u=${encodeURIComponent(resolved.m3u8)}&r=${encodeURIComponent(resolved.referer || "")}`;
     await playHLS(m3u8Url);
     hideOverlay();
-    universalPlayer.callbacks.onPlaybackStart?.(source);
+    notifyStarted(source);
     startProgressTracking();
   } catch (e) {
     console.error("[universal-player] Native load failed:", e);

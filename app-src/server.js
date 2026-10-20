@@ -16,20 +16,33 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const PORT = 8787;
+// Config can arrive through process.env (Electron / plain node) OR through
+// Java system properties (Android's nodejs-mobile bridge only sets the latter),
+// so read both. A missing FH_DATA_DIR on Android sent the localStorage backup
+// into the app's private files dir with the wrong lifetime.
+const javaProp = (name) => {
+  try {
+    return typeof System !== "undefined" && System.getProperty ? System.getProperty(name) : null;
+  } catch {
+    return null;
+  }
+};
+const config = (name, fallback) => process.env[name] || javaProp(name) || fallback;
+
+const PORT = Number(config("FH_PORT", 8787)) || 8787;
 const DIR = __dirname;
 // Writable, update-safe location for the localStorage backup. In the packaged
 // Electron app, __dirname lives inside app.asar (read-only, and replaced on
 // every auto-update) — electron-main.js points this at userData instead, so
 // Continue Watching/Reading survives reinstalls.
-const DATA_DIR = process.env.FH_DATA_DIR || DIR;
+const DATA_DIR = config("FH_DATA_DIR", DIR);
 const BACKUP_FILE = path.join(DATA_DIR, "fh-backup.json");
 // Downloaded manga chapters go under Documents, not the app/userData folder,
 // so they're easy to find, back up, or move in a normal file browser.
-const MANGA_DIR = process.env.FH_MANGA_DIR || path.join(os.homedir(), "Documents", "FictionHub", "Manga Downloads");
+const MANGA_DIR = config("FH_MANGA_DIR", path.join(os.homedir(), "Documents", "FictionHub", "Manga Downloads"));
 // Downloaded movies, series and anime go alongside the manga library, so the
 // whole offline library lives in one easy-to-back-up place.
-const VIDEO_DIR = process.env.FH_VIDEO_DIR || path.join(os.homedir(), "Documents", "FictionHub", "Video Downloads");
+const VIDEO_DIR = config("FH_VIDEO_DIR", path.join(os.homedir(), "Documents", "FictionHub", "Video Downloads"));
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
 // only these hosts may be proxied (so it can't be misused as an open proxy)
@@ -849,6 +862,21 @@ function openBrowser() {
 
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, `http://localhost:${PORT}`);
+
+  // CORS: on Android the UI is served by Capacitor from https://fictionhub.local
+  // while this server listens on http://localhost:8787 — a different origin.
+  // Every API call (resolve, stream proxy, downloads, backup) is therefore a
+  // cross-origin request and was blocked without these headers, leaving the
+  // player on a black screen. The server binds to 127.0.0.1 only, so allowing
+  // any origin exposes nothing beyond this device.
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Range, Authorization, X-Requested-With");
+  res.setHeader("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges");
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    return res.end();
+  }
 
   if (u.pathname === "/__proxy") {
     const target = u.searchParams.get("url");

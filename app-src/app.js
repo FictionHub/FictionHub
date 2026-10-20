@@ -1324,49 +1324,67 @@ function bootApp() {
 }
 
 // Initialize the new scraper, source manager, and universal player systems
+//
+// Each subsystem is initialized in its own try/catch. They are independent:
+// a failure in the scraper must not prevent the universal player from being
+// created, or the player container stays empty and the user gets a black
+// screen with no clue why. The player is the last step and is the one the
+// user actually sees, so it is initialized even if everything else failed.
 function initNewSystems() {
   // Initialize scraper (loads registry, starts background scans)
   if (typeof initScraper === "function") {
-    window.scraperAPI = initScraper();
+    try {
+      window.scraperAPI = initScraper();
+    } catch (e) {
+      console.error("[app] Scraper init failed:", e);
+    }
   }
-  
+
   // Initialize source manager (will be connected when media is selected)
   if (typeof initSourceManager === "function" && window.scraperAPI) {
-    const registry = window.scraperAPI.getRegistry();
-    // Keep the resolver-backed native source in the same source list as the
-    // scraped providers. Without this entry the universal player can never
-    // select the local HLS path, and downloads/native playback silently fall
-    // back to an embed instead.
-    registry.embedAPIs.__native = {
-      name: "Native",
-      type: "native",
-      native: true,
-      source: "builtin",
-    };
-    registry.health.__native = {
-      successRate: 1,
-      lastChecked: Date.now(),
-      consecutiveFailures: 0,
-    };
-    window.sourceManager = initSourceManager(registry, {
-      onSourceChange: onSourceChange,
-      onFailover: onSourceFailover,
-      onError: onSourceError,
-      onPlaybackStart: onSourcePlaybackStart,
-    });
+    try {
+      const registry = window.scraperAPI.getRegistry();
+      // Keep the resolver-backed native source in the same source list as the
+      // scraped providers. Without this entry the universal player can never
+      // select the local HLS path, and downloads/native playback silently fall
+      // back to an embed instead.
+      registry.embedAPIs.__native = {
+        name: "Native",
+        type: "native",
+        native: true,
+        source: "builtin",
+      };
+      registry.health.__native = {
+        successRate: 1,
+        lastChecked: Date.now(),
+        consecutiveFailures: 0,
+      };
+      window.sourceManager = initSourceManager(registry, {
+        onSourceChange: onSourceChange,
+        onFailover: onSourceFailover,
+        onError: onSourceError,
+        onPlaybackStart: onSourcePlaybackStart,
+      });
+    } catch (e) {
+      console.error("[app] Source manager init failed:", e);
+    }
   }
-  
+
   // Initialize universal player
   if (typeof initUniversalPlayer === "function") {
-    window.universalPlayer = initUniversalPlayer({
-      onPlaybackStart: onPlayerPlaybackStart,
-      onPlaybackEnd: onPlayerPlaybackEnd,
-      onError: onPlayerError,
-      onTimeUpdate: onPlayerTimeUpdate,
-      onNextEpisode: playNextEpisode,
-      onPrevEpisode: playPrevEpisode,
-      onNextSource: onNextSourceRequested,
-    });
+    try {
+      window.universalPlayer = initUniversalPlayer({
+        onPlaybackStart: onPlayerPlaybackStart,
+        onPlaybackEnd: onPlayerPlaybackEnd,
+        onError: onPlayerError,
+        onTimeUpdate: onPlayerTimeUpdate,
+        onNextEpisode: playNextEpisode,
+        onPrevEpisode: playPrevEpisode,
+        onNextSource: onNextSourceRequested,
+      });
+    } catch (e) {
+      console.error("[app] Universal player init failed:", e);
+    }
   }
 }
 
