@@ -38,6 +38,7 @@ let universalPlayer = {
     nextEpisodeAuto: true,
   },
 };
+let controlsHideTimer = null;
 
 function loadSettings() {
   try {
@@ -63,6 +64,7 @@ function createPlayerUI() {
   container.innerHTML = `
     <div class="up-stage" id="upStage">
       <video id="upVideo" playsinline 
+        controls
         x-webkit-airplay="allow" 
         disablepictureinpicture="false"
         controlslist="nodownload nofullscreen noremoteplayback"></video>
@@ -148,6 +150,37 @@ function bindEvents() {
   document.addEventListener("fullscreenchange", onFullscreenChange);
   document.addEventListener("keydown", onKeyDown);
   window.addEventListener("message", onEmbedMessage);
+
+  const stage = document.getElementById("upStage");
+  if (stage) {
+    const reveal = () => {
+      setControlsVisible(true);
+      scheduleControlsHide();
+    };
+    stage.addEventListener("pointermove", reveal);
+    stage.addEventListener("pointerdown", reveal);
+    stage.addEventListener("touchstart", reveal, { passive: true });
+    stage.addEventListener("mouseleave", () => scheduleControlsHide(500));
+  }
+  v.addEventListener("playing", () => scheduleControlsHide(1800));
+  v.addEventListener("pause", () => setControlsVisible(true));
+}
+
+function setControlsVisible(visible) {
+  const controls = document.getElementById("upControls");
+  const stage = document.getElementById("upStage");
+  if (!controls || !stage) return;
+  controls.classList.toggle("idle", !visible);
+  stage.classList.toggle("controls-idle", !visible);
+}
+
+function scheduleControlsHide(delay = 2200) {
+  clearTimeout(controlsHideTimer);
+  if (!universalPlayer.video || universalPlayer.video.paused || universalPlayer.isEmbed) {
+    setControlsVisible(true);
+    return;
+  }
+  controlsHideTimer = setTimeout(() => setControlsVisible(false), delay);
 }
 
 function bindControlEvents() {
@@ -173,6 +206,7 @@ window.initUniversalPlayer = function initUniversalPlayer(callbacks = {}) {
 };
 
 async function loadSource(source, media, options = {}) {
+  stopCurrentSource();
   universalPlayer.currentSource = source;
   universalPlayer.currentMedia = media;
   universalPlayer.isEmbed = !source.api?.native && !options.forceNative;
@@ -194,6 +228,8 @@ async function loadSource(source, media, options = {}) {
 async function loadEmbed(source, media) {
   universalPlayer.video.classList.add("hidden");
   universalPlayer.embedFrame.classList.remove("hidden");
+  document.getElementById("upControls")?.classList.add("hidden");
+  setControlsVisible(true);
   
   const url = source.url;
   if (!url) throw new Error("No URL for embed source");
@@ -203,9 +239,9 @@ async function loadEmbed(source, media) {
     window.fictionhub?.setEmbedHost?.(universalPlayer.embedHost);
   } catch {}
 
-  const proxyUrl = `/__proxy?url=${encodeURIComponent(url)}`;
-  universalPlayer.embedFrame.src = proxyUrl;
-  
+  // Video providers are intentionally not part of the manga proxy allowlist.
+  // Load the provider directly in the iframe; Electron's frame-navigation
+  // guard and request blocker still protect the top-level app from redirects.
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error("Embed load timeout")), 20000);
     universalPlayer.embedFrame.onload = () => {
@@ -221,12 +257,18 @@ async function loadEmbed(source, media) {
       clearTimeout(timeout);
       reject(new Error("Embed iframe error"));
     };
+    // Register the handlers before navigation. Cached/local responses can
+    // complete synchronously enough to otherwise miss the load event and
+    // leave the player black until the timeout fires.
+    universalPlayer.embedFrame.src = url;
   });
 }
 
 async function loadNative(source, media) {
   universalPlayer.embedFrame.classList.add("hidden");
   universalPlayer.video.classList.remove("hidden");
+  document.getElementById("upControls")?.classList.remove("hidden");
+  setControlsVisible(true);
   
   if (!source.api?.native) {
     universalPlayer.isEmbed = true;
@@ -234,6 +276,15 @@ async function loadNative(source, media) {
   }
 
   try {
+    // Offline downloads provide their own same-origin HLS playlist. Do not
+    // resolve them through the remote Atlantic stream endpoint.
+    if (source.url && (source.key === "local" || source.url.startsWith("/__video/"))) {
+      await playHLS(source.url);
+      hideOverlay();
+      universalPlayer.callbacks.onPlaybackStart?.(source);
+      startProgressTracking();
+      return;
+    }
     const { type, id, season, episode } = media;
     const res = await fetch(`/__stream/resolve?kind=${type}&id=${id}&season=${season}&episode=${episode}`);
     if (!res.ok) throw new Error("Resolve failed: " + res.status);
@@ -247,9 +298,37 @@ async function loadNative(source, media) {
     startProgressTracking();
   } catch (e) {
     console.error("[universal-player] Native load failed:", e);
+    if (source.key === "local" || source.url?.startsWith("/__video/")) throw e;
+    if (source.api?.native) {
+      // The native HLS resolver can be temporarily unavailable. Keep the
+      // player useful by falling back to the provider's own embed instead of
+      // leaving a black native stage with no URL to load.
+      const { type, id, season, episode } = media;
+      const url = type === "tv"
+        ? `https://atlantic.st/embed/tv/${id}/${season || 1}/${episode || 1}`
+        : `https://atlantic.st/embed/movie/${id}`;
+      universalPlayer.isEmbed = true;
+      return loadEmbed({ key: "native-embed-fallback", api: { name: "Atlantic", native: false }, url }, media);
+    }
     universalPlayer.isEmbed = true;
     return loadEmbed(source, media);
   }
+}
+
+function stopCurrentSource() {
+  clearProgressTimer();
+  clearTimeout(controlsHideTimer);
+  setControlsVisible(true);
+  if (universalPlayer.hls) {
+    try { universalPlayer.hls.destroy(); } catch {}
+    universalPlayer.hls = null;
+  }
+  if (universalPlayer.video) {
+    try { universalPlayer.video.pause(); } catch {}
+    universalPlayer.video.removeAttribute("src");
+    universalPlayer.video.load();
+  }
+  if (universalPlayer.embedFrame) universalPlayer.embedFrame.src = "about:blank";
 }
 
 async function playHLS(m3u8Url) {
@@ -306,10 +385,8 @@ async function playHLS(m3u8Url) {
     universalPlayer.hls.on(Hls.Events.ERROR, (e, data) => {
       console.warn("[universal-player] HLS error:", data.type, data.details, data.fatal);
       if (data.fatal) {
-        if (data.details === "manifestLoadError" || data.details === "levelLoadError") {
-          showOverlay("Stream unavailable, trying next source...");
-          universalPlayer.callbacks.onError?.(data);
-        }
+        showOverlay("Stream unavailable, trying next source...");
+        universalPlayer.callbacks.onError?.(data);
       }
     });
 
@@ -724,20 +801,36 @@ function updateSourceIndicator(name, status) {
   ind.classList.remove("hidden");
 }
 
+// Keep the object returned by initUniversalPlayer useful to integration code
+// as well as the global functions used by the legacy wrappers.
+universalPlayer.loadSource = loadSource;
+universalPlayer.updateSourceIndicator = updateSourceIndicator;
+
 window.destroyPlayer = function destroyPlayer() {
   clearProgressTimer();
+  clearTimeout(controlsHideTimer);
+  controlsHideTimer = null;
   if (universalPlayer.hls) {
     try { universalPlayer.hls.destroy(); } catch {}
     universalPlayer.hls = null;
   }
-  universalPlayer.video.src = "";
-  universalPlayer.video.load();
-  universalPlayer.embedFrame.src = "";
+  // Navigation can call cleanup before the player has been initialized (for
+  // example the first switch to Home, or while the profile picker is closing).
+  // Cleanup must be idempotent; otherwise the null dereference aborts the
+  // navigation handler and makes every subsequent button appear dead.
+  if (universalPlayer.video) {
+    universalPlayer.video.src = "";
+    universalPlayer.video.load();
+  }
+  if (universalPlayer.embedFrame) universalPlayer.embedFrame.src = "";
   universalPlayer.currentSource = null;
   universalPlayer.currentMedia = null;
-  hideOverlay();
-  document.getElementById("upControls").classList.add("hidden");
-  document.getElementById("upSourceIndicator").classList.add("hidden");
+  const overlay = document.getElementById("upOverlay");
+  const controls = document.getElementById("upControls");
+  const indicator = document.getElementById("upSourceIndicator");
+  if (overlay) overlay.classList.add("hidden");
+  if (controls) controls.classList.add("hidden");
+  if (indicator) indicator.classList.add("hidden");
 };
 
 window.getPlayerState = function getPlayerState() {

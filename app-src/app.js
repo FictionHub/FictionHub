@@ -1332,7 +1332,23 @@ function initNewSystems() {
   
   // Initialize source manager (will be connected when media is selected)
   if (typeof initSourceManager === "function" && window.scraperAPI) {
-    window.sourceManager = initSourceManager(window.scraperAPI.getRegistry(), {
+    const registry = window.scraperAPI.getRegistry();
+    // Keep the resolver-backed native source in the same source list as the
+    // scraped providers. Without this entry the universal player can never
+    // select the local HLS path, and downloads/native playback silently fall
+    // back to an embed instead.
+    registry.embedAPIs.__native = {
+      name: "Native",
+      type: "native",
+      native: true,
+      source: "builtin",
+    };
+    registry.health.__native = {
+      successRate: 1,
+      lastChecked: Date.now(),
+      consecutiveFailures: 0,
+    };
+    window.sourceManager = initSourceManager(registry, {
       onSourceChange: onSourceChange,
       onFailover: onSourceFailover,
       onError: onSourceError,
@@ -1357,11 +1373,12 @@ function initNewSystems() {
 // Source manager callbacks
 function onSourceChange(newSource, oldSource) {
   console.log("[app] Source changed:", newSource?.api?.name, "->", newSource?.api?.name);
-  if (window.universalPlayer && newSource) {
+  if (window.universalPlayer && window.loadSource && newSource && activeMedia) {
     // Load the new source in the universal player
     const resumePos = getResumePosition();
-    window.universalPlayer.loadSource(newSource, activeMedia, { resumePosition: resumePos });
-    updateSourceIndicator(newSource);
+    window.loadSource(newSource, activeMedia, { resumePosition: resumePos })
+      .then(() => updateSourceIndicator(newSource))
+      .catch(onSourceError);
   }
 }
 
@@ -1395,7 +1412,7 @@ function onPlayerPlaybackStart(source) {
 
 function onPlayerPlaybackEnd() {
   // Handle next episode auto-play
-  saveProgress(true);
+  // universal-player.js saves the final position before invoking this hook.
 }
 
 function onPlayerError(error) {
@@ -1458,9 +1475,13 @@ loadIframe = async function() {
       // Load in universal player
       if (window.loadSource) {
         const resumePos = getResumePosition();
-        await window.loadSource(source, activeMedia, { resumePosition: resumePos });
         window.startPlaybackMonitor();
-        updateSourceIndicator(source);
+        try {
+          await window.loadSource(source, activeMedia, { resumePosition: resumePos });
+          updateSourceIndicator(source);
+        } catch (e) {
+          onSourceError(e);
+        }
       }
       return;
     }
@@ -1477,9 +1498,10 @@ switchSource = function(i) {
     const newSource = window.selectSource(i);
     if (newSource && window.loadSource) {
       const resumePos = getResumePosition();
-      window.loadSource(newSource, activeMedia, { resumePosition: resumePos });
       window.startPlaybackMonitor();
-      updateSourceIndicator(newSource);
+      window.loadSource(newSource, activeMedia, { resumePosition: resumePos })
+        .then(() => updateSourceIndicator(newSource))
+        .catch(onSourceError);
     }
     // Update legacy sourceIndex for compatibility
     sourceIndex = i;
