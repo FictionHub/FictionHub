@@ -151,6 +151,11 @@ function bindEvents() {
   document.addEventListener("keydown", onKeyDown);
   window.addEventListener("message", onEmbedMessage);
 
+  // Populate subtitle menu on init in case HLS tracks are already available
+  // (e.g., if manifest was parsed before UI was ready)
+  populateSubtitleMenu();
+  populateQualityMenu();
+
   const stage = document.getElementById("upStage");
   if (stage) {
     const reveal = () => {
@@ -755,10 +760,13 @@ function populateQualityMenu() {
 
 function populateSubtitleMenu() {
   const sel = document.getElementById("upSubtitle");
+  if (!sel) return;
   const tracks = universalPlayer.subtitles.length ? universalPlayer.subtitles : 
                  (universalPlayer.hls?.subtitleTracks || []);
+  // Sanitize track labels to avoid weird characters in the dropdown
+  const sanitize = (s) => String(s).replace(/[^\u0020-\u007E\u00A0-\uFFFF]/g, '').trim() || `Track`;
   sel.innerHTML = '<option value="-1">Off</option>' + 
-    tracks.map((t, i) => `<option value="${i}">${t.label || t.name || `Track ${i+1}`}</option>`).join("");
+    tracks.map((t, i) => `<option value="${i}">${sanitize(t.label || t.name || `Track ${i+1}`)}</option>`).join("");
   if (universalPlayer.settings.defaultSubtitle !== "off") {
     const idx = tracks.findIndex(t => t.label === universalPlayer.settings.defaultSubtitle);
     if (idx >= 0) { sel.value = idx; universalPlayer.currentSubtitle = idx; }

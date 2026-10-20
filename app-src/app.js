@@ -1038,10 +1038,17 @@ function setFailoverNotice(msg) {
 
 function renderSourceTabs() {
   const bar = document.getElementById("sourceTabs");
-  bar.innerHTML = SOURCES.map((s, i) =>
-    (s.animeOnly && !activeMedia?.isAnime) ? "" :
-    `<button class="src-tab ${i === sourceIndex ? "active" : ""}" onclick="switchSource(${i})">Server ${i + 1}</button>`
-  ).join("");
+  // Use the new source manager's source list if available, fall back to old SOURCES
+  const sources = window.sourceManager?.currentSources?.length
+    ? window.sourceManager.currentSources
+    : SOURCES;
+  const activeIdx = window.sourceManager?.currentIndex ?? sourceIndex;
+  bar.innerHTML = sources.map((s, i) => {
+    const api = s.api || s;
+    if (api.animeOnly && !activeMedia?.isAnime) return "";
+    const name = api.name || `Server ${i + 1}`;
+    return `<button class="src-tab ${i === activeIdx ? "active" : ""}" onclick="switchSource(${i})">${name}</button>`;
+  }).join("");
 }
 
 function switchSource(i) {
