@@ -13,6 +13,7 @@
 !README.md
 !package.json
 !package-lock.json
+!capacitor.config.ts
 
 # --- app source ---
 !app-src/
