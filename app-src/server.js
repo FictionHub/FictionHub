@@ -263,24 +263,41 @@ function pickBestVariant(playlist) {
   return best;
 }
 
-// Fetch a playlist through the local /__stream proxy (it applies the Referer
-// the upstream needs and rewrites segment URLs back to this server).
-async function fetchStreamPlaylist(m3u8Url, referer) {
-  const res = await fetch(`http://localhost:${PORT}/__stream/m3u8?u=${encodeURIComponent(m3u8Url)}&r=${encodeURIComponent(referer || "https://atlantic.st/")}`);
+// Fetch a playlist through the local /__stream proxy (it applies the headers
+// the upstream needs — header profile `h` — and rewrites URIs back here).
+async function fetchStreamPlaylist(m3u8Url, h) {
+  const res = await fetch(`http://localhost:${PORT}/__stream/m3u8?u=${encodeURIComponent(m3u8Url)}&h=${h}`);
   if (!res.ok) throw new Error("playlist " + res.status);
   return res.text();
 }
 
 // Fetch arbitrary stream bytes (segment or AES-128 key) through the proxy.
-async function fetchStreamBytes(url, referer) {
-  const res = await fetch(`http://localhost:${PORT}/__stream/seg?u=${encodeURIComponent(url)}&r=${encodeURIComponent(referer || "https://atlantic.st/")}`);
-  if (!res.ok) throw new Error("stream " + res.status);
-  return Buffer.from(await res.arrayBuffer());
+// Retries rate limits (429) and server hiccups with backoff — stream CDNs
+// throttle a fast offline download long before it finishes.
+async function fetchStreamBytes(url, h) {
+  let lastErr;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    let res;
+    try {
+      res = await fetch(`http://localhost:${PORT}/__stream/seg?u=${encodeURIComponent(url)}&h=${h}`);
+    } catch (e) {
+      lastErr = e; // network error: retry
+    }
+    if (res) {
+      if (res.ok) return Buffer.from(await res.arrayBuffer());
+      lastErr = new Error("stream " + res.status);
+      if (res.status !== 429 && res.status < 500) throw lastErr; // permanent
+    }
+    await new Promise(r => setTimeout(r, Math.min(30000, 1000 * 2 ** attempt) + Math.random() * 500));
+  }
+  throw lastErr;
 }
 
 function extFromUrl(url, fallback) {
   try {
     const ext = path.extname(new URL(url).pathname).toLowerCase();
+    // CDNs disguise media segments as web files; keep the media fallback.
+    if (/^\.(html?|png|jpe?g|gif|webp|js|css|txt|ico|svg)$/.test(ext)) return fallback;
     if (ext && ext.length <= 5) return ext;
   } catch {}
   return fallback;
@@ -292,14 +309,14 @@ async function runVideoDownload(key, { type, id, title, season, episode, poster,
   try {
     if (videoComplete(key)) { job.running = false; return; }
 
-    const r = await fetch(`http://localhost:${PORT}/__stream/resolve?kind=${type}&id=${id}&season=${season || 1}&episode=${episode || 1}`, { headers: { "User-Agent": "FictionHub" } });
-    if (!r.ok) throw new Error("stream resolve failed (" + r.status + ")");
-    const resolved = await r.json();
-    if (!resolved || !resolved.m3u8) throw new Error("no stream available for this title");
-    const referer = resolved.referer || "https://atlantic.st/";
+    // Offline copies are written as a local HLS playlist, so only HLS
+    // streams from the Vyla SDK are usable here.
+    const resolved = await resolveFirstStream(type === "tv" ? "tv" : "movie", id, season || 1, episode || 1, { hlsOnly: true });
+    if (!resolved || !resolved.url) throw new Error("no stream available for this title");
+    const referer = resolved.h; // header profile for every request below
 
-    let playlistBase = resolved.m3u8;
-    let playlist = await fetchStreamPlaylist(resolved.m3u8, referer);
+    let playlistBase = resolved.url;
+    let playlist = await fetchStreamPlaylist(resolved.url, referer);
     // Multi-rendition master: keep the highest-bandwidth variant for offline.
     if (playlist.includes("#EXT-X-STREAM-INF")) {
       const variantUri = pickBestVariant(playlist);
@@ -702,79 +719,190 @@ async function handleVideo(req, res, u) {
   res.end("not found");
 }
 
-/* ---------- Native-player stream proxy + resolver ----------
-   The app's own hls.js player runs on this origin, but upstream stream CDNs
-   send no CORS headers and often require a Referer. All player traffic goes
-   through these endpoints instead:
-   - /__stream/resolve?kind=&id=&season=&episode=  → asks Atlantic's stream
-     API (helios, then moscow as fallback) for the title and decrypts the
-     returned token. The tokens ("hl_…"/"ms_…") are 12-byte-IV + AES-GCM
-     payloads whose keys ship inside Atlantic's own public JS bundle — this
-     replicates exactly what their player does, minus the browser part.
-   - /__stream/m3u8?u=&r=  fetches an HLS playlist (Referer r, browser UA),
-                           rewrites every URI line / URI="..." attribute to
-                           point back at this proxy, serves it to hls.js.
-                           Responses that aren't playlists (their m3u8-proxy
-                           also pipes binary init segments through .m3u8
-                           URLs) are passed through byte-clean.
-   - /__stream/seg?u=&r=   pipes segment/key/media bytes through */
-const STREAM_ALLOW = /(^|\.)(hls\.lol|atlantic\.st|transcode\.cfd|totallyacdn\.org|zenoak\.top)$/i;
+/* ---------- Stream sources: Vyla SDK + header-aware stream proxy ----------
+   Every video source comes from the Vyla SDK (@vyla-entertainment/sdk,
+   https://gitlab.com/vyla-entertainment/sdk). It runs here, server-side,
+   and turns a TMDB id into direct HLS / MP4 stream URLs plus the request
+   headers (Referer/Origin/UA) each CDN insists on.
 
-const STREAM_TOKEN_KEYS = {
-  hl_: "117c358bcfcaf8fe2cfca57c9d2238a300e1c4de2efb83a5012ba84d8a31f1dd",
-  ms_: "55060a042823f51a94c296894a58a0db15f3baef807155140983083fa799ef47",
-};
-const hexBytes = (h) => new Uint8Array(h.match(/.{2}/g).map(b => parseInt(b, 16)));
+   Two consumers use it:
+   - Vyla's own web player (vyla-player/), through the /api/* routes below.
+   - The offline downloader, which picks the first HLS stream any source
+     returns (resolveFirstStream) and fetches it through:
+       /__stream/m3u8?u=&h=  HLS playlist; every URI is rewritten back here
+       /__stream/seg?u=&h=   segment / key bytes (Range-aware)
+     `h` names a header profile this server issued when it resolved the
+     stream. Only URLs carrying a known profile are proxied, so this can't
+     be used as an open proxy (and it binds to 127.0.0.1 anyway). */
 
-async function decryptStreamToken(token) {
-  const keyHex = STREAM_TOKEN_KEYS[token.slice(0, 3)];
-  if (!keyHex) throw new Error("unknown stream token prefix");
-  const raw = hexBytes(token.slice(3));
-  if (raw.length < 28) throw new Error("stream token payload too short");
-  const key = await crypto.subtle.importKey("raw", hexBytes(keyHex), { name: "AES-GCM" }, false, ["decrypt"]);
-  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: raw.slice(0, 12) }, key, raw.slice(12));
-  return new TextDecoder().decode(pt);
+// The SDK is an ES module with top-level await; server.js is CommonJS, so it
+// is loaded once with a dynamic import. A load failure (e.g. a missing
+// optional native dependency on some platform) must not take down the rest
+// of the server — manga, downloads and backups keep working.
+let vylaPromise = null;
+function getVyla() {
+  if (!vylaPromise) {
+    vylaPromise = (async () => {
+      const { pathToFileURL } = require("url");
+      const entry = require.resolve("@vyla-entertainment/sdk");
+      const mod = await import(pathToFileURL(entry).href);
+      const VylaSDK = mod.default || mod.VylaSDK;
+      return new VylaSDK({ tmdbApiKey: config("TMDB_API_KEY", undefined) });
+    })().catch((e) => {
+      console.error("[vyla] SDK failed to load:", e);
+      vylaPromise = null; // allow a retry on the next request
+      throw e;
+    });
+  }
+  return vylaPromise;
 }
 
-// Atlantic's stream API: helios is the primary, moscow the fallback. TV uses
-// seasonId/episodeId (their naming), not season/episode.
-async function resolveNativeStream(kind, id, season, episode) {
-  const q = new URLSearchParams({ tmdbId: String(id), type: kind });
-  if (kind === "tv") { q.set("seasonId", String(season || 1)); q.set("episodeId", String(episode || 1)); }
-  const problems = [];
-  for (const ep of ["helios", "moscow"]) {
-    try {
-      const r = await fetch(`https://stream.hls.lol/${ep}?${q}`, {
-        headers: streamFetchHeaders("https://atlantic.st/"),
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!r.ok) { problems.push(ep + " http " + r.status); continue; }
-      const j = await r.json();
-      const token = j && j.sources && j.sources.Moscow && j.sources.Moscow.url;
-      if (!token) { problems.push(ep + " no-source"); continue; }
-      const m3u8 = await decryptStreamToken(token);
-      if (m3u8) return { m3u8, referer: "https://atlantic.st/" };
-      problems.push(ep + " empty-decrypt");
-    } catch (e) {
-      problems.push(ep + " " + String(e.message || e).slice(0, 80));
+// Sources that answered quickly and reliably in testing go first; the rest
+// follow in the SDK's own order. Live health probes reorder this further.
+const VYLA_PREFERRED = ["vidzee", "vidlink", "vixsrc", "rivestream", "vidfast", "hexa", "pstream", "vidsrc", "cinesrc", "nexa", "vidvault"];
+
+// Health probe cache — the SDK probes each source against a known movie and
+// episode. Run in the background at most every 6 hours.
+const VYLA_HEALTH_TTL = 6 * 60 * 60 * 1000;
+let vylaHealth = { at: 0, results: {}, running: false };
+
+function refreshVylaHealth(force = false) {
+  if (vylaHealth.running) return;
+  if (!force && Date.now() - vylaHealth.at < VYLA_HEALTH_TTL) return;
+  vylaHealth.running = true;
+  getVyla()
+    .then(sdk => sdk.probeAllSources())
+    .then(results => { vylaHealth = { at: Date.now(), results: results || {}, running: false }; })
+    .catch(e => {
+      console.log("[vyla] health probe failed:", String(e.message || e).slice(0, 120));
+      vylaHealth.running = false;
+    });
+}
+
+async function vylaSourceList() {
+  const sdk = await getVyla();
+  const list = sdk.getSources(true);
+  const health = vylaHealth.results;
+  const rank = (key) => {
+    const i = VYLA_PREFERRED.indexOf(key);
+    return i === -1 ? VYLA_PREFERRED.length : i;
+  };
+  // healthy first (fastest first), then untested, then known-failing
+  const tier = (key) => {
+    const h = health[key];
+    if (!h) return 1;
+    return h.ok ? 0 : 2;
+  };
+  return list
+    .map((cfg, order) => ({ cfg, order }))
+    .sort((a, b) =>
+      tier(a.cfg.key) - tier(b.cfg.key) ||
+      (tier(a.cfg.key) === 0 ? (health[a.cfg.key].ms || 0) - (health[b.cfg.key].ms || 0) : 0) ||
+      rank(a.cfg.key) - rank(b.cfg.key) ||
+      a.order - b.order)
+    .map(({ cfg }) => ({
+      key: cfg.key,
+      name: cfg.label || cfg.key,
+      anime: /anime|kisskh/i.test(cfg.key),
+      health: health[cfg.key] ? { ok: !!health[cfg.key].ok, ms: health[cfg.key].ms } : null,
+    }));
+}
+
+// Header profiles: id → headers to send upstream. Bounded so a long session
+// doesn't grow it forever (oldest profiles are evicted first).
+const headerProfiles = new Map();
+const HEADER_PROFILE_MAX = 2000;
+function issueHeaderProfile(headers) {
+  const clean = { "User-Agent": UA };
+  for (const [k, v] of Object.entries(headers || {})) {
+    if (typeof v === "string" && v && !/^(host|content-length|connection|range)$/i.test(k)) clean[k] = v;
+  }
+  const sig = JSON.stringify(clean);
+  for (const [id, p] of headerProfiles) if (p.sig === sig) return id;
+  const id = require("crypto").randomBytes(6).toString("hex");
+  headerProfiles.set(id, { sig, headers: clean });
+  while (headerProfiles.size > HEADER_PROFILE_MAX) headerProfiles.delete(headerProfiles.keys().next().value);
+  return id;
+}
+
+function streamType(item) {
+  const url = item.url || "";
+  if (item.type === "hls" || /\.m3u8(\?|$)/i.test(url)) return "hls";
+  if (item.type === "dash" || /\.mpd(\?|$)/i.test(url)) return "dash";
+  return "mp4";
+}
+
+// Normalise one SDK getStream() result into the streams the player can use.
+// DASH is dropped (the player has hls.js only); HLS is listed before MP4
+// because the MP4 links are often huge MKV/HEVC files browsers can't decode.
+function playableStreams(result, sourceKey) {
+  if (!result) return [];
+  const items = Array.isArray(result.allUrls) && result.allUrls.length ? result.allUrls : (result.url ? [result] : []);
+  const seen = new Set();
+  const out = [];
+  for (const item of items) {
+    const url = typeof item?.url === "string" ? item.url.trim() : "";
+    if (!/^https?:\/\//i.test(url) || seen.has(url)) continue;
+    seen.add(url);
+    const type = streamType(item);
+    if (type === "dash") continue;
+    const h = issueHeaderProfile(item.headers || result.headers);
+    const enc = encodeURIComponent(url);
+    out.push({
+      source: sourceKey,
+      server: item.server || item.label || sourceKey,
+      quality: item.quality || "Auto",
+      type,
+      url,
+      h,
+      play: type === "hls" ? `/__stream/m3u8?u=${enc}&h=${h}` : `/__stream/seg?u=${enc}&h=${h}`,
+    });
+  }
+  // Streams labelled with another language (e.g. "VixSrc (Italian)") go
+  // after English / unlabelled ones.
+  const foreign = (s) => /english|\beng\b/i.test(s.server) ? 0
+    : /italian|\bita\b|hindi|french|spanish|latino|german|russian|portuguese|arabic|turkish/i.test(s.server) ? 1 : 0;
+  return out.sort((a, b) =>
+    ((a.type === "hls" ? 0 : 1) - (b.type === "hls" ? 0 : 1)) || (foreign(a) - foreign(b)));
+}
+
+const withTimeout = (promise, ms) =>
+  Promise.race([promise, new Promise(resolve => setTimeout(() => resolve(null), ms))]);
+
+async function vylaStreams(key, kind, id, season, episode) {
+  const sdk = await getVyla();
+  const isTv = kind === "tv";
+  const result = await withTimeout(
+    sdk.getStream(key, String(id), isTv ? (season || 1) : null, isTv ? (episode || 1) : null),
+    30000
+  );
+  return playableStreams(result, key);
+}
+
+// Try sources in ranked order, a few at a time, and return the first that
+// yields a stream. Used by the offline downloader and the legacy player.
+async function resolveFirstStream(kind, id, season, episode, { hlsOnly = false } = {}) {
+  const sources = await vylaSourceList();
+  const BATCH = 4;
+  for (let i = 0; i < sources.length; i += BATCH) {
+    const batch = sources.slice(i, i + BATCH);
+    const results = await Promise.all(batch.map(s =>
+      vylaStreams(s.key, kind, id, season, episode).catch(() => [])));
+    for (const streams of results) {
+      const usable = hlsOnly ? streams.filter(s => s.type === "hls") : streams;
+      if (usable.length) return usable[0];
     }
   }
-  if (problems.length) console.log("[stream] resolve failed:", problems.join(" | "));
   return null;
 }
 
-function streamFetchHeaders(referer, extra = {}) {
-  return { "User-Agent": UA, "Referer": referer || "https://atlantic.st/", ...extra };
-}
-
-function rewriteLine(line, playlistUrl, referer) {
+function rewriteLine(line, playlistUrl, h) {
   const toProxy = (abs, isPlaylist) =>
-    isPlaylist
-      ? `/__stream/m3u8?u=${encodeURIComponent(abs)}&r=${encodeURIComponent(referer)}`
-      : `/__stream/seg?u=${encodeURIComponent(abs)}&r=${encodeURIComponent(referer)}`;
+    `/__stream/${isPlaylist ? "m3u8" : "seg"}?u=${encodeURIComponent(abs)}&h=${h}`;
   // URI="..." attributes inside #EXT-X-KEY / #EXT-X-MAP / #EXT-X-MEDIA
   if (line.startsWith("#") && line.includes('URI="')) {
     return line.replace(/URI="([^"]+)"/g, (m, uri) => {
+      if (uri.startsWith("data:") || uri.startsWith("skd:")) return m;
       const abs = new URL(uri, playlistUrl).toString();
       return `URI="${toProxy(abs, /\.m3u8(\?|$)/i.test(abs))}"`;
     });
@@ -784,31 +912,279 @@ function rewriteLine(line, playlistUrl, referer) {
   return toProxy(abs, /\.m3u8(\?|$)/i.test(abs));
 }
 
-async function handleStream(req, res, u) {
-  // resolve: embed-free source resolution (no hidden window, no browser)
-  if (u.pathname === "/__stream/resolve") {
-    const kind = u.searchParams.get("kind") === "tv" ? "tv" : "movie";
-    const id = parseInt(u.searchParams.get("id"), 10);
-    if (!id) { res.writeHead(400); return res.end("bad id"); }
-    try {
-      const out = await resolveNativeStream(kind, id,
-        parseInt(u.searchParams.get("season"), 10), parseInt(u.searchParams.get("episode"), 10));
-      res.writeHead(out ? 200 : 404, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-      return res.end(JSON.stringify(out || { error: "no source" }));
-    } catch (e) {
-      res.writeHead(502);
-      return res.end(JSON.stringify({ error: String(e.message || e) }));
+// A playlist is a playlist even when the URL doesn't say so (many SDK
+// sources serve HLS from extension-less API paths), so variant playlists are
+// detected by the preceding #EXT-X-STREAM-INF / TYPE= tag, not the URL.
+function rewritePlaylist(text, playlistUrl, h) {
+  const lines = text.split("\n").map(l => l.replace(/\r$/, ""));
+  let nextIsPlaylist = false;
+  return lines.map(line => {
+    if (line.startsWith("#EXT-X-STREAM-INF") || line.startsWith("#EXT-X-I-FRAME-STREAM-INF")) {
+      nextIsPlaylist = line.startsWith("#EXT-X-STREAM-INF");
+      if (line.includes('URI="')) {
+        return line.replace(/URI="([^"]+)"/g, (m, uri) =>
+          `URI="/__stream/m3u8?u=${encodeURIComponent(new URL(uri, playlistUrl).toString())}&h=${h}"`);
+      }
+      return line;
     }
+    if (line.startsWith("#EXT-X-MEDIA") && line.includes('URI="')) {
+      return line.replace(/URI="([^"]+)"/g, (m, uri) =>
+        `URI="/__stream/m3u8?u=${encodeURIComponent(new URL(uri, playlistUrl).toString())}&h=${h}"`);
+    }
+    if (nextIsPlaylist && line.trim() && !line.startsWith("#")) {
+      nextIsPlaylist = false;
+      return `/__stream/m3u8?u=${encodeURIComponent(new URL(line.trim(), playlistUrl).toString())}&h=${h}`;
+    }
+    return rewriteLine(line, playlistUrl, h);
+  }).join("\n");
+}
+
+function sendJSON(res, status, data) {
+  res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+  res.end(JSON.stringify(data));
+}
+
+/* ---------- Vyla player API (/api/*) ----------
+   The streaming player is Vyla's own web player (vyla-player/, vendored from
+   gitlab.com/vyla-entertainment/player). It expects the routes of its
+   Express server; these are ported from it and run on the same SDK
+   instance as the downloader.
+
+   Its /api/proxy fetches whatever URL it is given. That's fine on a hosted
+   server, but here it would let any web page the user visits reach their
+   local network through the app. So the proxy only serves hosts the SDK
+   itself handed out (stream, subtitle and download URLs, and the hosts named
+   inside playlists fetched from those), and never private addresses. */
+const VYLA_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+const trustedHosts = new Set();
+
+function isPrivateHost(host) {
+  const h = host.toLowerCase().replace(/^\[|\]$/g, "");
+  if (h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local") || h === "0.0.0.0") return true;
+  if (/^(127|10)\./.test(h) || /^192\.168\./.test(h) || /^169\.254\./.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+  if (h.includes(":") && (h === "::1" || /^f[cd]/.test(h) || /^fe80/.test(h))) return true;
+  return false;
+}
+
+function trustUrl(url) {
+  try {
+    const u = new URL(url);
+    if (/^https?:$/.test(u.protocol) && !isPrivateHost(u.hostname)) trustedHosts.add(u.hostname.toLowerCase());
+  } catch {}
+}
+
+const vylaParam = (u, name) => {
+  const v = u.searchParams.get(name);
+  return v && v !== "null" && v !== "undefined" ? v : undefined;
+};
+
+async function isStreamPlayable(streamUrl, headers = {}, depth = 0) {
+  try {
+    const res = await fetch(streamUrl, {
+      headers: { "User-Agent": VYLA_UA, Accept: "*/*", "Accept-Language": "en-US,en;q=0.9", ...headers, Range: "bytes=0-1024" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(6000),
+    });
+    if (![200, 206, 304].includes(res.status)) { res.body?.cancel(); return false; }
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    const isM3U8 = streamUrl.includes(".m3u8") || ct.includes("mpegurl") || ct.includes("m3u8");
+    if (!isM3U8) { res.body?.cancel(); return true; }
+
+    const text = await res.text();
+    let first = null;
+    for (const line of text.split("\n")) {
+      const t = line.trim();
+      if (t && !t.startsWith("#")) { first = new URL(t, streamUrl).toString(); break; }
+    }
+    if (!first) return false;
+    if (first.includes("m3u8")) return depth < 3 && isStreamPlayable(first, headers, depth + 1);
+    const chunk = await fetch(first, {
+      headers: { "User-Agent": VYLA_UA, Accept: "*/*", "Accept-Language": "en-US,en;q=0.9", ...headers, Range: "bytes=0-1024" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(6000),
+    });
+    chunk.body?.cancel();
+    return [200, 206, 304].includes(chunk.status);
+  } catch {
+    return false;
+  }
+}
+
+async function handleVylaApi(req, res, u) {
+  try {
+    if (u.pathname === "/api/sources") {
+      const sdk = await getVyla();
+      refreshVylaHealth();
+      // RegExp fields (cdnHeaders patterns) don't survive JSON; send what the
+      // player uses.
+      const sources = sdk.getSources(true).map(cfg => ({ key: cfg.key, label: cfg.label }));
+      return sendJSON(res, 200, { sources });
+    }
+
+    if (u.pathname === "/api/stream") {
+      const provider = vylaParam(u, "provider");
+      const tmdbId = vylaParam(u, "tmdbId");
+      if (!provider || !tmdbId) return sendJSON(res, 400, { error: "Missing provider or tmdbId parameter" });
+      const sdk = await getVyla();
+      const s = vylaParam(u, "season");
+      const e = vylaParam(u, "episode");
+      const streamData = await withTimeout(sdk.getStream(String(provider), String(tmdbId), s, s ? (e || "1") : e), 30000);
+      if (!streamData) return sendJSON(res, 404, { error: "Stream not found" });
+
+      const headers = streamData.headers || {};
+      if (Array.isArray(streamData.allUrls) && streamData.allUrls.length) {
+        const checks = await Promise.all(streamData.allUrls.map(async (x) =>
+          x && x.url && await isStreamPlayable(x.url, x.headers || headers) ? x : null));
+        streamData.allUrls = checks.filter(Boolean);
+        if (streamData.allUrls.length) {
+          if (!streamData.url || !streamData.allUrls.some(x => x.url === streamData.url)) streamData.url = streamData.allUrls[0].url;
+        } else {
+          streamData.url = null;
+        }
+      } else if (streamData.url && !(await isStreamPlayable(streamData.url, headers))) {
+        streamData.url = null;
+      }
+      if (!streamData.url) return sendJSON(res, 404, { error: "No playable stream found" });
+
+      trustUrl(streamData.url);
+      for (const x of streamData.allUrls || []) trustUrl(x.url);
+      return sendJSON(res, 200, { success: true, provider, stream: streamData });
+    }
+
+    if (u.pathname === "/api/subtitles") {
+      const tmdbId = vylaParam(u, "tmdbId");
+      if (!tmdbId) return sendJSON(res, 200, { subtitles: [] });
+      const sdk = await getVyla();
+      const subtitles = (await withTimeout(sdk.getSubtitles(String(tmdbId), vylaParam(u, "season"), vylaParam(u, "episode")), 15000)) || [];
+      for (const t of subtitles) trustUrl(t && t.file);
+      return sendJSON(res, 200, { subtitles });
+    }
+
+    if (u.pathname === "/api/downloads") {
+      const tmdbId = vylaParam(u, "tmdbId");
+      if (!tmdbId) return sendJSON(res, 200, { downloads: [] });
+      const sdk = await getVyla();
+      const downloads = (await withTimeout(sdk.getDownloads(String(tmdbId), vylaParam(u, "season"), vylaParam(u, "episode")), 60000)) || [];
+      for (const d of downloads) trustUrl(d && d.url);
+      return sendJSON(res, 200, { downloads });
+    }
+
+    if (u.pathname === "/api/proxy") return vylaProxy(req, res, u);
+  } catch (e) {
+    if (u.pathname === "/api/subtitles") return sendJSON(res, 200, { subtitles: [] });
+    if (u.pathname === "/api/downloads") return sendJSON(res, 200, { downloads: [] });
+    return sendJSON(res, 404, { error: String(e.message || e) });
+  }
+  res.writeHead(404);
+  res.end("not found");
+}
+
+async function vylaProxy(req, res, u) {
+  const targetUrl = u.searchParams.get("url");
+  if (!targetUrl) { res.writeHead(400); return res.end("Missing url parameter"); }
+  let dest;
+  try { dest = new URL(targetUrl); } catch { res.writeHead(400); return res.end("bad url"); }
+  if (!/^https?:$/.test(dest.protocol) || isPrivateHost(dest.hostname) || !trustedHosts.has(dest.hostname.toLowerCase())) {
+    res.writeHead(403); return res.end("host not allowed");
   }
 
+  let customHeaders = {};
+  if (u.searchParams.get("headers")) {
+    try { customHeaders = JSON.parse(u.searchParams.get("headers")) || {}; } catch {}
+  }
+  for (const k of Object.keys(customHeaders)) {
+    if (/^(host|content-length|connection)$/i.test(k) || typeof customHeaders[k] !== "string") delete customHeaders[k];
+  }
+  const isStrip = u.searchParams.get("strip") === "1" || u.searchParams.get("tt") === "1" ||
+    /tiktokcdn\.com|ibyteimg\.com|seg\.html|enproxy|letsgocdn\d+\.shop/i.test(targetUrl);
+
+  const fetchOpts = {
+    method: req.method === "HEAD" ? "HEAD" : "GET",
+    headers: { "User-Agent": VYLA_UA, Accept: "*/*", "Accept-Language": "en-US,en;q=0.9", ...customHeaders },
+    redirect: "follow",
+  };
+  if (req.headers.range) fetchOpts.headers.Range = req.headers.range;
+
+  let response, lastErr;
+  for (let i = 0; i < 3; i++) {
+    try {
+      response = await fetch(dest.toString(), fetchOpts);
+      if (response.ok || response.status === 206 || response.status === 404) break;
+      if (i < 2) { response.body?.cancel(); await new Promise(r => setTimeout(r, 1000)); }
+    } catch (err) {
+      lastErr = err;
+      response = null;
+      if (i < 2) await new Promise(r => setTimeout(r, 500 * (i + 1)));
+    }
+  }
+  if (!response) { res.writeHead(502); return res.end(lastErr ? String(lastErr.message) : "Bad Gateway"); }
+  if (!response.ok && response.status !== 206) {
+    response.body?.cancel();
+    res.writeHead(response.status); return res.end(`Upstream error: ${response.status}`);
+  }
+
+  const ct = (response.headers.get("content-type") || "").toLowerCase();
+  const isM3U8 = targetUrl.includes(".m3u8") || ct.includes("mpegurl") || ct.includes("m3u8");
+  if (isM3U8 && req.method !== "HEAD") {
+    const text = await response.text();
+    const base = response.url || targetUrl;
+    const headersParam = Object.keys(customHeaders).length ? `&headers=${encodeURIComponent(JSON.stringify(customHeaders))}` : "";
+    const lines = text.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const t = lines[i].trim();
+      if (!t) continue;
+      if (t.startsWith("#")) {
+        if (t.includes('URI="')) {
+          lines[i] = t.replace(/URI="([^"]+)"/g, (m, uri) => {
+            if (/^(data|skd):/i.test(uri)) return m;
+            const abs = new URL(uri, base).toString();
+            trustUrl(abs);
+            return `URI="/api/proxy?url=${encodeURIComponent(abs)}${headersParam}"`;
+          });
+        }
+        continue;
+      }
+      const abs = new URL(t, base).toString();
+      trustUrl(abs);
+      const stripParam = isStrip || /seg\.html|enproxy|tiktokcdn|ibyteimg/i.test(abs) ? "&strip=1" : "";
+      lines[i] = `/api/proxy?url=${encodeURIComponent(abs)}${headersParam}${stripParam}`;
+    }
+    res.writeHead(200, { "Content-Type": "application/vnd.apple.mpegurl", "Cache-Control": "no-store" });
+    return res.end(lines.join("\n"));
+  }
+
+  if (isStrip && req.method !== "HEAD") {
+    // segments wrapped in a fake image header: drop the 120-byte prefix
+    let buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > 120 && (buffer[0] === 0x89 || buffer[0] === 0xFF || buffer[0] === 0x00)) buffer = buffer.subarray(120);
+    res.writeHead(200, { "Content-Type": "video/MP2T" });
+    return res.end(buffer);
+  }
+
+  const out = {};
+  for (const h of ["content-type", "content-length", "content-range", "accept-ranges"]) {
+    if (response.headers.has(h)) out[h] = response.headers.get(h);
+  }
+  res.writeHead(response.status, out);
+  if (req.method === "HEAD" || !response.body) { response.body?.cancel(); return res.end(); }
+  const { Readable } = require("stream");
+  const body = Readable.fromWeb(response.body);
+  req.on("close", () => body.destroy());
+  body.on("error", () => res.destroy());
+  body.pipe(res);
+}
+
+async function handleStream(req, res, u) {
   const target = u.searchParams.get("u");
-  const referer = u.searchParams.get("r") || "https://atlantic.st/";
+  const profile = headerProfiles.get(u.searchParams.get("h") || "");
+  if (!profile) { res.writeHead(403); return res.end("unknown stream profile"); }
   let dest;
   try { dest = new URL(target); } catch { res.writeHead(400); return res.end("bad url"); }
-  if (!STREAM_ALLOW.test(dest.hostname)) { res.writeHead(403); return res.end("host not allowed"); }
+  if (!/^https?:$/.test(dest.protocol)) { res.writeHead(400); return res.end("bad url"); }
 
-  const upstreamHeaders = streamFetchHeaders(referer);
-  if (req.headers.range) upstreamHeaders["Range"] = req.headers.range; // byte-range segments
+  const upstreamHeaders = { ...profile.headers };
+  if (req.headers.range) upstreamHeaders["Range"] = req.headers.range; // byte-range segments / MP4 seeking
 
   try {
     const up = await fetch(dest.toString(), { headers: upstreamHeaders, redirect: "follow" });
@@ -817,38 +1193,39 @@ async function handleStream(req, res, u) {
     if (u.pathname === "/__stream/m3u8") {
       const buf = Buffer.from(await up.arrayBuffer());
       const finalUrl = up.url || dest.toString(); // resolve redirects for relative URIs
-      // their m3u8-proxy pipes binary init segments through .m3u8 URLs too —
-      // only rewrite when the body is actually a playlist
-      if (buf.slice(0, 7).toString("latin1") === "#EXTM3U") {
-        const rewritten = buf.toString("utf8").split("\n")
-          .map(l => rewriteLine(l.replace(/\r$/, ""), finalUrl, referer)).join("\n");
-        res.writeHead(200, {
-          "Content-Type": "application/vnd.apple.mpegurl",
-          "Cache-Control": "no-store",
-          "Access-Control-Allow-Origin": "*",
-        });
-        return res.end(rewritten);
+      // some upstream proxies pipe binary init segments through .m3u8 URLs
+      // too — only rewrite when the body is actually a playlist
+      if (buf.slice(0, 16).toString("latin1").replace(/^﻿/, "").trimStart().startsWith("#EXTM3U")) {
+        const h = u.searchParams.get("h");
+        res.writeHead(200, { "Content-Type": "application/vnd.apple.mpegurl", "Cache-Control": "no-store" });
+        return res.end(rewritePlaylist(buf.toString("utf8"), finalUrl, h));
       }
       res.writeHead(up.status, {
         "Content-Type": up.headers.get("content-type") || "video/mp4",
         "Content-Length": buf.length,
-        "Access-Control-Allow-Origin": "*",
       });
       return res.end(buf);
     }
 
-    // segment / key bytes — stream through
+    // /__stream/seg — segment / key / MP4 bytes, streamed through without
+    // buffering whole (MP4 sources can be several GB)
+    // CDNs often disguise TS segments as images; tell the player the truth.
+    let segType = up.headers.get("content-type") || "video/mp2t";
+    if (/^(image|text)\//i.test(segType)) segType = "video/mp2t";
     res.writeHead(up.status, {
-      "Content-Type": up.headers.get("content-type") || "video/mp2t",
+      "Content-Type": segType,
       "Accept-Ranges": up.headers.get("accept-ranges") || "bytes",
       ...(up.headers.get("content-range") ? { "Content-Range": up.headers.get("content-range") } : {}),
       ...(up.headers.get("content-length") ? { "Content-Length": up.headers.get("content-length") } : {}),
-      "Access-Control-Allow-Origin": "*",
     });
-    const buf = Buffer.from(await up.arrayBuffer());
-    return res.end(buf);
+    if (!up.body) return res.end();
+    const { Readable } = require("stream");
+    const body = Readable.fromWeb(up.body);
+    req.on("close", () => body.destroy());
+    body.on("error", () => res.destroy());
+    return body.pipe(res);
   } catch (e) {
-    res.writeHead(502);
+    if (!res.headersSent) res.writeHead(502);
     res.end(String(e));
   }
 }
@@ -888,6 +1265,10 @@ const server = http.createServer((req, res) => {
     return handleStream(req, res, u);
   }
 
+  if (u.pathname.startsWith("/api/")) {
+    return handleVylaApi(req, res, u);
+  }
+
   if (u.pathname.startsWith("/__manga/")) {
     return handleManga(req, res, u);
   }
@@ -923,7 +1304,7 @@ const server = http.createServer((req, res) => {
 
   // static file serving
   let p = decodeURIComponent(u.pathname);
-  if (p === "/") p = "/index.html";
+  if (p.endsWith("/")) p += "index.html"; // "/" and folders like /vyla-player/
   const file = path.join(DIR, p);
   if (!file.startsWith(DIR)) { res.writeHead(403); return res.end("forbidden"); }
   fs.readFile(file, (err, data) => {

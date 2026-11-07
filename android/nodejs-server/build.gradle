@@ -7,13 +7,34 @@ apply plugin: 'com.android.library'
 def appSrcDir = file('../../app-src')
 def serverAssetsDir = file('src/main/assets/server')
 
-tasks.register('syncServerAssets', Copy) {
-    from appSrcDir
+// The server's stream sources come from the Vyla SDK, so its runtime
+// dependency tree must ship too (run `npm ci` in app-src before building).
+// koffi is left out: it's a ~28 MB set of desktop native binaries with no
+// Android build, and only two optional SDK features (cinemaarmy source, Atsu
+// manga) touch it — at call time, so the SDK still loads without it.
+def serverNodeModules = [
+    '@vyla-entertainment/sdk', 'node-tls-client', 'tough-cookie', 'psl',
+    'punycode', 'universalify', 'url-parse', 'querystringify', 'requires-port',
+]
+
+tasks.register('syncServerAssets', Sync) {
+    from(appSrcDir) {
+        // Don't ship build output or the legacy duplicate web/ folder.
+        exclude 'www/**', 'node_modules/**', 'build/**', 'dist/**', 'fh-backup.json'
+        exclude '*.log', 'package-lock.json'
+    }
+    serverNodeModules.each { mod ->
+        from(new File(appSrcDir, "node_modules/${mod}")) {
+            into "node_modules/${mod}"
+        }
+    }
     into serverAssetsDir
-    // Don't ship build output or the legacy duplicate web/ folder.
-    exclude 'www/**', 'node_modules/**', 'build/**', 'dist/**', 'fh-backup.json'
-    exclude '*.log', 'package-lock.json'
-    include '**/*'
+    doFirst {
+        def sdk = new File(appSrcDir, 'node_modules/@vyla-entertainment/sdk/package.json')
+        if (!sdk.exists()) {
+            throw new GradleException("Vyla SDK not installed — run `npm ci` in app-src before building Android.")
+        }
+    }
 }
 
 android {

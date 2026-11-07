@@ -1,0 +1,83 @@
+#unmute-hint {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 9999;
+    background: var(--menu-bg-light);
+    backdrop-filter: blur(10px);
+    color: var(--black-85);
+    font-size: var(--ctrl-font-size);
+    font-weight: 600;
+    padding: 14px 24px;
+    border-radius: 100px;
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    cursor: pointer;
+    letter-spacing: 0.02em;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+    opacity: 0;
+}
+
+#unmute-hint i {
+    font-size: 16px;
+}
+
+#now-playing-toast {
+    position: fixed;
+    top: var(--toast-top);
+    left: 50%;
+    transform: translateX(-50%) translateY(-20px) scale(0.8);
+    z-index: 99999;
+    opacity: 0;
+    pointer-events: none;
+    transition: none;
+}
+
+#now-playing-toast.enter {
+    animation: npEnter 0.72s var(--ease-out) forwards;
+}
+
+#now-playing-toast.exit {
+    animation: npExit 0.55s var(--ease-in) forwards;
+}
+
+.np-inner {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+}
+
+.np-label {
+    font-size: var(--toast-label-size);
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--white-45);
+}
+
+.np-title {
+    font-size: var(--toast-title-size);
+    font-weight: 600;
+    color: var(--white-92);
+    letter-spacing: 0.01em;
+    text-shadow: 0 2px 24px var(--black-55);
+    white-space: nowrap;
+}
+
+.np-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 160%;
+    height: 400%;
+    background: radial-gradient(ellipse 80% 40% at 50% 15%, var(--white-08) 0%, var(--white-03) 35%, transparent 70%);
+    pointer-events: none;
+    border-radius: 50%;
+    animation: npGlowPulse 4s var(--ease-out) infinite alternate;
+}

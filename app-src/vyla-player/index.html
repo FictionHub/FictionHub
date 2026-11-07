@@ -1,0 +1,779 @@
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.7.4/dist/hls.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
+    <link rel="stylesheet" href="css/main.css">
+
+    <script type="module" src="src/main.js"></script>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+
+<body>
+
+    <div id="loader">
+        <div id="loader-bg"></div>
+        <div id="loader-spinner-wrap" style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
+            <div class="wave-loader">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+            <span id="loader-spinner-label"></span>
+        </div>
+    </div>
+
+    <div id="player">
+        <canvas id="ambient-glow-canvas"></canvas>
+        <video id="v" playsinline></video>
+        <canvas id="vr-canvas"></canvas>
+        <div id="vr-permission-btn"><button id="vr-permission-confirm">Enable Motion &amp; Enter VR</button></div>
+
+        <div id="title-bar">
+            <span id="title-text"></span>
+            <span id="ep-badge"></span>
+            <button id="btn-cast" class="ctrl-btn" style="margin-left: auto;">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <g id="SVGRepo_bgCarrier" stroke-width="0"></g>
+                    <g id="SVGRepo_tracerCarrier" stroke-linecap="round" stroke-linejoin="round"></g>
+                    <g id="SVGRepo_iconCarrier">
+                        <g id="Media / Chromecast">
+                            <path id="Vector"
+                                d="M3 8.2502V8.2002C3 7.08009 3 6.51962 3.21799 6.0918C3.40973 5.71547 3.71547 5.40973 4.0918 5.21799C4.51962 5 5.08009 5 6.2002 5H17.8002C18.9203 5 19.4796 5 19.9074 5.21799C20.2837 5.40973 20.5905 5.71547 20.7822 6.0918C21 6.5192 21 7.07899 21 8.19691V15.8031C21 16.921 21 17.48 20.7822 17.9074C20.5905 18.2837 20.2839 18.5905 19.9076 18.7822C19.4802 19 18.921 19 17.8031 19H14M5 19C5 17.8954 4.10457 17 3 17M8 19C8 16.2386 5.76142 14 3 14M11 19C11 14.5817 7.41828 11 3 11"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            </path>
+                        </g>
+                    </g>
+                </svg>
+            </button>
+        </div>
+
+        <div id="center-flash">
+            <button id="cf-skip-left" class="cf-skip-btn">
+                <svg width="1em" height="1em" viewBox="0 0 25 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M13.6667 12.3333L9 7.66667M9 7.66667L13.6667 3M9 7.66667H18.3333C19.571 7.66667 20.758 8.15833 21.6332 9.0335C22.5083 9.90867 23 11.0957 23 12.3333C23 13.571 22.5083 14.758 21.6332 15.6332C20.758 16.5083 19.571 17 18.3333 17H16"
+                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                    <path
+                        d="M4.50426 14.2727V23H2.65909V16.0241H2.60795L0.609375 17.277V15.6406L2.76989 14.2727H4.50426ZM10.0004 23.1918C9.2674 23.1889 8.63672 23.0085 8.10831 22.6506C7.58274 22.2926 7.17791 21.7741 6.89382 21.0952C6.61257 20.4162 6.47337 19.5994 6.47621 18.6449C6.47621 17.6932 6.61683 16.8821 6.89808 16.2116C7.18217 15.5412 7.587 15.0312 8.11257 14.6818C8.64098 14.3295 9.27024 14.1534 10.0004 14.1534C10.7305 14.1534 11.3583 14.3295 11.8839 14.6818C12.4123 15.0341 12.8185 15.5455 13.1026 16.2159C13.3867 16.8835 13.5273 17.6932 13.5245 18.6449C13.5245 19.6023 13.3825 20.4205 13.0984 21.0994C12.8171 21.7784 12.4137 22.2969 11.8881 22.6548C11.3626 23.0128 10.7333 23.1918 10.0004 23.1918ZM10.0004 21.6619C10.5004 21.6619 10.8995 21.4105 11.1978 20.9077C11.4961 20.4048 11.6438 19.6506 11.641 18.6449C11.641 17.983 11.5728 17.4318 11.4364 16.9915C11.3029 16.5511 11.1126 16.2202 10.8654 15.9986C10.6211 15.777 10.3327 15.6662 10.0004 15.6662C9.5032 15.6662 9.10547 15.9148 8.80717 16.4119C8.50888 16.9091 8.35831 17.6534 8.35547 18.6449C8.35547 19.3153 8.42223 19.875 8.55575 20.3239C8.69212 20.7699 8.88388 21.1051 9.13104 21.3295C9.3782 21.5511 9.66797 21.6619 10.0004 21.6619Z"
+                        fill="currentColor"></path>
+                </svg>
+            </button>
+            <i class="fa-solid fa-play" id="ci"
+                onclick="var v=document.getElementById('v');v.paused?v.play():v.pause();"></i> <button
+                id="cf-skip-right" class="cf-skip-btn">
+                <svg width="1em" height="1em" viewBox="0 0 26 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path
+                        d="M11.3333 12.3333L16 7.66667M16 7.66667L11.3333 3M16 7.66667H6.66667C5.42899 7.66667 4.242 8.15833 3.36684 9.0335C2.49167 9.90867 2 11.0957 2 12.3333C2 13.571 2.49167 14.758 3.36684 15.6332C4.242 16.5083 5.42899 17 6.66667 17H9"
+                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path>
+                    <path
+                        d="M16.5043 14.2727V23H14.6591V16.0241H14.608L12.6094 17.277V15.6406L14.7699 14.2727H16.5043ZM22.0004 23.1918C21.2674 23.1889 20.6367 23.0085 20.1083 22.6506C19.5827 22.2926 19.1779 21.7741 18.8938 21.0952C18.6126 20.4162 18.4734 19.5994 18.4762 18.6449C18.4762 17.6932 18.6168 16.8821 18.8981 16.2116C19.1822 15.5412 19.587 15.0312 20.1126 14.6818C20.641 14.3295 21.2702 14.1534 22.0004 14.1534C22.7305 14.1534 23.3583 14.3295 23.8839 14.6818C24.4123 15.0341 24.8185 15.5455 25.1026 16.2159C25.3867 16.8835 25.5273 17.6932 25.5245 18.6449C25.5245 19.6023 25.3825 20.4205 25.0984 21.0994C24.8171 21.7784 24.4137 22.2969 23.8881 22.6548C23.3626 23.0128 22.7333 23.1918 22.0004 23.1918ZM22.0004 21.6619C22.5004 21.6619 22.8995 21.4105 23.1978 20.9077C23.4961 20.4048 23.6438 19.6506 23.641 18.6449C23.641 17.983 23.5728 17.4318 23.4364 16.9915C23.3029 16.5511 23.1126 16.2202 22.8654 15.9986C22.6211 15.777 22.3327 15.6662 22.0004 15.6662C21.5032 15.6662 21.1055 15.9148 20.8072 16.4119C20.5089 16.9091 20.3583 17.6534 20.3555 18.6449C20.3555 19.3153 20.4222 19.875 20.5558 20.3239C20.6921 20.7699 20.8839 21.1051 21.131 21.3295C21.3782 21.5511 21.668 21.6619 22.0004 21.6619Z"
+                        fill="currentColor"></path>
+                </svg>
+            </button>
+        </div>
+
+        <div id="buffering-spinner">
+            <svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="22" cy="22" r="18" />
+            </svg>
+        </div>
+
+        <div id="player-controls-wrapper">
+            <div id="progress-container">
+                <div id="track-row">
+                    <span id="t-cur">0:00</span>
+                    <div id="track-wrap">
+                        <div id="tooltip"><span id="tooltip-time">0:00</span></div>
+                        <div id="track">
+                            <div id="buf"></div>
+                            <div id="prog"></div>
+                            <div id="thumb"></div>
+                        </div>
+                    </div>
+                    <span id="t-dur">0:00</span>
+                </div>
+            </div>
+
+            <div id="controls">
+                <div id="control-row">
+                    <div id="left-controls">
+                        <button id="btn-play-main" class="ctrl-btn"
+                            onclick="var v=document.getElementById('v');v.paused?v.play():v.pause();">
+                            <i class="fa-solid fa-play" id="play-btn-icon"></i>
+                        </button>
+                        <button class="ctrl-btn mobile-hide"
+                            onclick="var v=document.getElementById('v');v.currentTime=Math.max(0,v.currentTime-10);">
+                            <svg width="1em" height="1em" viewBox="0 0 25 24" fill="none"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M13.6667 12.3333L9 7.66667M9 7.66667L13.6667 3M9 7.66667H18.3333C19.571 7.66667 20.758 8.15833 21.6332 9.0335C22.5083 9.90867 23 11.0957 23 12.3333C23 13.571 22.5083 14.758 21.6332 15.6332C20.758 16.5083 19.571 17 18.3333 17H16"
+                                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                                    stroke-linejoin="round"></path>
+                                <path
+                                    d="M4.50426 14.2727V23H2.65909V16.0241H2.60795L0.609375 17.277V15.6406L2.76989 14.2727H4.50426ZM10.0004 23.1918C9.2674 23.1889 8.63672 23.0085 8.10831 22.6506C7.58274 22.2926 7.17791 21.7741 6.89382 21.0952C6.61257 20.4162 6.47337 19.5994 6.47621 18.6449C6.47621 17.6932 6.61683 16.8821 6.89808 16.2116C7.18217 15.5412 7.587 15.0312 8.11257 14.6818C8.64098 14.3295 9.27024 14.1534 10.0004 14.1534C10.7305 14.1534 11.3583 14.3295 11.8839 14.6818C12.4123 15.0341 12.8185 15.5455 13.1026 16.2159C13.3867 16.8835 13.5273 17.6932 13.5245 18.6449C13.5245 19.6023 13.3825 20.4205 13.0984 21.0994C12.8171 21.7784 12.4137 22.2969 11.8881 22.6548C11.3626 23.0128 10.7333 23.1918 10.0004 23.1918ZM10.0004 21.6619C10.5004 21.6619 10.8995 21.4105 11.1978 20.9077C11.4961 20.4048 11.6438 19.6506 11.641 18.6449C11.641 17.983 11.5728 17.4318 11.4364 16.9915C11.3029 16.5511 11.1126 16.2202 10.8654 15.9986C10.6211 15.777 10.3327 15.6662 10.0004 15.6662C9.5032 15.6662 9.10547 15.9148 8.80717 16.4119C8.50888 16.9091 8.35831 17.6534 8.35547 18.6449C8.35547 19.3153 8.42223 19.875 8.55575 20.3239C8.69212 20.7699 8.88388 21.1051 9.13104 21.3295C9.3782 21.5511 9.66797 21.6619 10.0004 21.6619Z"
+                                    fill="currentColor"></path>
+                            </svg>
+                        </button>
+                        <button class="ctrl-btn mobile-hide"
+                            onclick="var v=document.getElementById('v');v.currentTime=Math.min(v.duration||0,v.currentTime+10);">
+                            <svg width="1em" height="1em" viewBox="0 0 26 24" fill="none"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path
+                                    d="M11.3333 12.3333L16 7.66667M16 7.66667L11.3333 3M16 7.66667H6.66667C5.42899 7.66667 4.242 8.15833 3.36684 9.0335C2.49167 9.90867 2 11.0957 2 12.3333C2 13.571 2.49167 14.758 3.36684 15.6332C4.242 16.5083 5.42899 17 6.66667 17H9"
+                                    stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                                    stroke-linejoin="round"></path>
+                                <path
+                                    d="M16.5043 14.2727V23H14.6591V16.0241H14.608L12.6094 17.277V15.6406L14.7699 14.2727H16.5043ZM22.0004 23.1918C21.2674 23.1889 20.6367 23.0085 20.1083 22.6506C19.5827 22.2926 19.1779 21.7741 18.8938 21.0952C18.6126 20.4162 18.4734 19.5994 18.4762 18.6449C18.4762 17.6932 18.6168 16.8821 18.8981 16.2116C19.1822 15.5412 19.587 15.0312 20.1126 14.6818C20.641 14.3295 21.2702 14.1534 22.0004 14.1534C22.7305 14.1534 23.3583 14.3295 23.8839 14.6818C24.4123 15.0341 24.8185 15.5455 25.1026 16.2159C25.3867 16.8835 25.5273 17.6932 25.5245 18.6449C25.5245 19.6023 25.3825 20.4205 25.0984 21.0994C24.8171 21.7784 24.4137 22.2969 23.8881 22.6548C23.3626 23.0128 22.7333 23.1918 22.0004 23.1918ZM22.0004 21.6619C22.5004 21.6619 22.8995 21.4105 23.1978 20.9077C23.4961 20.4048 23.6438 19.6506 23.641 18.6449C23.641 17.983 23.5728 17.4318 23.4364 16.9915C23.3029 16.5511 23.1126 16.2202 22.8654 15.9986C22.6211 15.777 22.3327 15.6662 22.0004 15.6662C21.5032 15.6662 21.1055 15.9148 20.8072 16.4119C20.5089 16.9091 20.3583 17.6534 20.3555 18.6449C20.3555 19.3153 20.4222 19.875 20.5558 20.3239C20.6921 20.7699 20.8839 21.1051 21.131 21.3295C21.3782 21.5511 21.668 21.6619 22.0004 21.6619Z"
+                                    fill="currentColor"></path>
+                            </svg>
+                        </button>
+                        <div id="volume-wrap">
+                            <button id="btn-volume" class="ctrl-btn">
+                                <span id="volume-icon"></span>
+                            </button>
+                            <div id="volume-slider-wrap">
+                                <input type="range" id="volume-slider" min="0" max="100" value="100">
+                            </div>
+                        </div>
+                        <div id="time-display"><span id="td-cur">0:00</span><span id="time-sep"> / </span><span
+                                id="td-dur">0:00</span></div>
+                    </div>
+                    <div class="ctrl-center">
+                        <!--
+                        <button id="btn-vyla" class="ctrl-btn"
+                            onclick="window.open('https://vyla.cc', '_blank')">
+                            <img src="https://vyla.cc/favicon.ico" alt="Vyla">
+                        </button>
+                        -->
+                        <button id="btn-subtitles-shortcut" class="ctrl-btn">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 25 20"
+                                fill="currentColor">
+                                <path transform="translate(-3 -6)"
+                                    d="M25.5,6H5.5A2.507,2.507,0,0,0,3,8.5v15A2.507,2.507,0,0,0,5.5,26h20A2.507,2.507,0,0,0,28,23.5V8.5A2.507,2.507,0,0,0,25.5,6ZM5.5,16h5v2.5h-5ZM18,23.5H5.5V21H18Zm7.5,0h-5V21h5Zm0-5H13V16H25.5Z">
+                                </path>
+                            </svg>
+                        </button>
+                        <button id="btn-episodes" class="ctrl-btn" title="Episodes" style="display:none;">
+                            <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none"
+                                xmlns="http://www.w3.org/2000/svg">
+                                <path fill-rule="evenodd" clip-rule="evenodd"
+                                    d="M3 4C1.34315 4 0 5.34314 0 7V13.9496C0 15.6065 1.34315 16.9496 3 16.9496H5.86645V14.9496H3C2.44772 14.9496 2 14.5019 2 13.9496V7C2 6.44771 2.44771 6 3 6H16.0327C16.585 6 17.0327 6.44772 17.0327 7V9.86645H19.0327V7C19.0327 5.34315 17.6896 4 16.0327 4H3Z"
+                                    fill="currentColor"></path>
+                                <rect x="5.89929" y="10.5444" width="17" height="10" rx="2" stroke="currentColor"
+                                    stroke-width="2"></rect>
+                            </svg>
+                            <span class="ctrl-text">Episodes</span>
+                        </button>
+                        <button id="btn-pip" class="ctrl-btn">
+                            <svg xmlns="http://www.w3.org/2000/svg" height="1em" width="1em" fill="currentColor"
+                                viewBox="0 0 24 24">
+                                <path d="M0 0h24v24H0z" fill="none"></path>
+                                <path
+                                    d="M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.1.9 1.98 2 1.98h18c1.1 0 2-.88 2-1.98V5c0-1.1-.9-2-2-2zm0 16.01H3V4.98h18v14.03z">
+                                </path>
+                            </svg>
+                        </button>
+                        <div id="settings-btn-wrap">
+                            <button id="btn-settings" class="ctrl-btn" title="Settings">
+                                <svg fill="currentColor" width="1em" height="1em" viewBox="0 0 48.4 48.4"
+                                    xmlns="http://www.w3.org/2000/svg">
+                                    <path
+                                        d="M48.4,24.2c0-1.8-1.297-3.719-2.896-4.285s-3.149-1.952-3.6-3.045c-0.451-1.093-0.334-3.173,0.396-4.705 c0.729-1.532,0.287-3.807-0.986-5.08c-1.272-1.273-3.547-1.714-5.08-0.985c-1.532,0.729-3.609,0.848-4.699,0.397 s-2.477-2.003-3.045-3.602C27.921,1.296,26,0,24.2,0c-1.8,0-3.721,1.296-4.29,2.895c-0.569,1.599-1.955,3.151-3.045,3.602 c-1.09,0.451-3.168,0.332-4.7-0.397c-1.532-0.729-3.807-0.288-5.08,0.985c-1.273,1.273-1.714,3.547-0.985,5.08 c0.729,1.533,0.845,3.611,0.392,4.703c-0.453,1.092-1.998,2.481-3.597,3.047S0,22.4,0,24.2s1.296,3.721,2.895,4.29 c1.599,0.568,3.146,1.957,3.599,3.047c0.453,1.089,0.335,3.166-0.394,4.698s-0.288,3.807,0.985,5.08 c1.273,1.272,3.547,1.714,5.08,0.985c1.533-0.729,3.61-0.847,4.7-0.395c1.091,0.452,2.476,2.008,3.045,3.604 c0.569,1.596,2.49,2.891,4.29,2.891c1.8,0,3.721-1.295,4.29-2.891c0.568-1.596,1.953-3.15,3.043-3.604 c1.09-0.453,3.17-0.334,4.701,0.396c1.533,0.729,3.808,0.287,5.08-0.985c1.273-1.273,1.715-3.548,0.986-5.08 c-0.729-1.533-0.849-3.61-0.398-4.7c0.451-1.09,2.004-2.477,3.603-3.045C47.104,27.921,48.4,26,48.4,24.2z M24.2,33.08 c-4.91,0-8.88-3.97-8.88-8.87c0-4.91,3.97-8.88,8.88-8.88c4.899,0,8.87,3.97,8.87,8.88C33.07,29.11,29.1,33.08,24.2,33.08z">
+                                    </path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <button id="btn-fullscreen" class="ctrl-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 448 512"
+                            fill="currentColor">
+                            <path
+                                d="M32 32C14.3 32 0 46.3 0 64v96c0 17.7 14.3 32 32 32s32-14.3 32-32V96h64c17.7 0 32-14.3 32-32s-14.3-32-32-32H32zM64 352c0-17.7-14.3-32-32-32s-32 14.3-32 32v96c0 17.7 14.3 32 32 32h96c17.7 0 32-14.3 32-32s-14.3-32-32-32H64V352zM320 32c-17.7 0-32 14.3-32 32s14.3 32 32 32h64v64c0 17.7 14.3 32 32 32s32-14.3 32-32V64c0-17.7-14.3-32-32-32H320zM448 352c0-17.7-14.3-32-32-32s-32 14.3-32 32v64H320c-17.7 0-32 14.3-32 32s14.3 32 32 32h96c17.7 0 32-14.3 32-32V352z">
+                            </path>
+                        </svg>
+                    </button>
+                    <span id="ep-current-title" class="ep-current-title-label"></span>
+                </div>
+            </div>
+        </div>
+
+        <div id="error-screen">
+            <div class="err-text">Source Not Found</div>
+            <div class="err-sub"></div>
+        </div>
+
+        <div id="subtitle-display"><span id="subtitle-text"></span></div>
+
+        <div id="unmute-hint">
+            <i class="fa-solid fa-volume-xmark"></i> Tap to unmute
+        </div>
+    </div>
+
+    <div id="skip-segment-btn">
+        <div id="skip-segment-inner">
+            <i class="fa-solid fa-forward-step"></i>
+            <span id="skip-segment-label">Skip Intro</span>
+        </div>
+    </div>
+
+    <div id="next-ep-btn">
+        <div id="next-ep-inner">
+            <span id="next-ep-label">Next Episode</span>
+            <i class="fa-solid fa-arrow-right"></i>
+        </div>
+    </div>
+
+    <div id="now-playing-toast"></div>
+
+    <div id="settings-overlay-backdrop"></div>
+    <div id="settings-modal-wrap">
+        <div id="settings-panel">
+            <div id="settings-view-main" class="settings-view active">
+                <div class="settings-grid">
+                    <div class="settings-tile" data-nav="quality">
+                        <span class="tile-label">Quality</span>
+                        <span class="tile-value" id="lbl-quality">Auto</span>
+                    </div>
+                    <div class="settings-tile" data-nav="sources">
+                        <span class="tile-label">Source</span>
+                        <span class="tile-value" id="lbl-source">Loading</span>
+                    </div>
+                    <div class="settings-tile" data-nav="subtitles">
+                        <span class="tile-label">Subtitles</span>
+                        <span class="tile-value" id="lbl-subtitle">Off</span>
+                    </div>
+                    <div class="settings-tile" data-nav="video">
+                        <span class="tile-label">Video</span>
+                        <span class="tile-value" id="lbl-video">Auto</span>
+                    </div>
+                </div>
+                <div class="settings-main-list">
+                    <div class="settings-main-divider"></div>
+                    <div class="settings-main-item" id="main-pip-btn">
+                        <span>Download</span>
+                        <i class="fa-solid fa-chevron-right settings-main-chevron"></i>
+                    </div>
+                    <div class="settings-main-item" id="main-watchparty-btn">
+                        <span>Watch Party</span>
+                        <i class="fa-solid fa-chevron-right settings-main-chevron"></i>
+                    </div>
+                    <div class="settings-main-divider"></div>
+                    <div class="settings-main-item settings-main-toggle-row">
+                        <span>Speed boost on hold</span>
+                        <div class="settings-toggle on" id="speed-boost-toggle">
+                            <div class="settings-toggle-knob"></div>
+                        </div>
+                    </div>
+                    <div class="settings-main-item" id="main-playback-btn">
+                        <span>Playback settings</span>
+                        <i class="fa-solid fa-chevron-right settings-main-chevron"></i>
+                    </div>
+                    <div class="settings-main-item" id="main-segment-btn">
+                        <span>Skip Segments</span>
+                        <i class="fa-solid fa-chevron-right settings-main-chevron"></i>
+                    </div>
+                </div>
+            </div>
+            <div id="settings-view-speed" class="settings-view">
+                <div class="settings-view-header">
+                    <button class="settings-back-btn"><i class="fa-solid fa-arrow-left"></i></button>
+                    <span class="settings-view-title">Playback Speed</span>
+                </div>
+                <div class="settings-list" id="speed-opts">
+                    <div class="settings-list-item" data-speed="0.25"><i class="fa-regular fa-circle"></i> 0.25x</div>
+                    <div class="settings-list-item" data-speed="0.5"><i class="fa-regular fa-circle"></i> 0.5x</div>
+                    <div class="settings-list-item" data-speed="0.75"><i class="fa-regular fa-circle"></i> 0.75x</div>
+                    <div class="settings-list-item active" data-speed="1"><i class="fa-regular fa-circle-dot"></i>
+                        Normal</div>
+                    <div class="settings-list-item" data-speed="1.25"><i class="fa-regular fa-circle"></i> 1.25x</div>
+                    <div class="settings-list-item" data-speed="1.5"><i class="fa-regular fa-circle"></i> 1.5x</div>
+                    <div class="settings-list-item" data-speed="1.75"><i class="fa-regular fa-circle"></i> 1.75x</div>
+                    <div class="settings-list-item" data-speed="2"><i class="fa-regular fa-circle"></i> 2x</div>
+                </div>
+            </div>
+            <div id="settings-view-download" class="settings-view">
+                <div class="settings-view-header">
+                    <button class="settings-back-btn"><i class="fa-solid fa-arrow-left"></i></button>
+                    <span class="settings-view-title">Download</span>
+                </div>
+                <div id="download-list"></div>
+            </div>
+            <div id="settings-view-video" class="settings-view">
+                <div class="settings-view-header">
+                    <button class="settings-back-btn"><i class="fa-solid fa-arrow-left"></i></button>
+                    <span class="settings-view-title">Video</span>
+                </div>
+                <div class="settings-list">
+                    <div class="settings-list-item"><span>Brightness</span><input type="range" id="vid-brightness"
+                            class="settings-range" min="0" max="200" value="100"></div>
+                    <div class="settings-list-item"><span>Contrast</span><input type="range" id="vid-contrast"
+                            class="settings-range" min="0" max="200" value="100"></div>
+                    <div class="settings-list-item"><span>Saturation</span><input type="range" id="vid-saturate"
+                            class="settings-range" min="0" max="200" value="100"></div>
+                    <div class="settings-main-divider"></div>
+                    <div class="quality-auto-row">
+                        <span class="quality-auto-label">ASCII Mode</span>
+                        <div class="settings-toggle" id="btn-toggle-ascii">
+                            <div class="settings-toggle-knob"></div>
+                        </div>
+                    </div>
+                    <div class="quality-auto-sub">
+                        Inspired by <a href="https://github.com/vyla-entertainment/cli-player" target="_blank"
+                            style="color: white; text-decoration: none;">CLI Player</a>
+                        <br>
+                        May cause lag on some devices.
+                    </div>
+                    <div class="quality-auto-row">
+                        <span class="quality-auto-label">ASCII Color</span>
+                        <div class="settings-toggle on" id="btn-toggle-ascii-color">
+                            <div class="settings-toggle-knob"></div>
+                        </div>
+                    </div>
+                    <div class="quality-auto-row vr-mobile-only" id="vr-toggle-row">
+                        <span class="quality-auto-label">VR Mode</span>
+                        <div class="settings-toggle" id="btn-toggle-vr">
+                            <div class="settings-toggle-knob"></div>
+                        </div>
+                    </div>
+                    <div class="quality-auto-sub vr-mobile-only" id="vr-mode-sub">
+                        Point your phone around to look inside the video.
+                    </div>
+                    <div class="quality-auto-row vr-mobile-only" id="vr-split-row" style="display:none;">
+                        <span class="quality-auto-label">Headset Mode</span>
+                        <div class="select-wrapper" style="min-width:140px;">
+                            <select id="vr-split-select" class="settings-select">
+                                <option value="single">Single Screen</option>
+                                <option value="split">Split Screen (VR)</option>
+                            </select>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </div>
+                    </div>
+                    <div class="sub-custom-row sub-custom-row-between vr-mobile-only" id="vr-projection-row"
+                        style="display:none;">
+                        <span class="sub-custom-label">Projection</span>
+                        <div class="select-wrapper" style="min-width:110px;">
+                            <select id="vr-projection-select" class="settings-select">
+                                <option value="mono">Mono (Orientation)</option>
+                                <option value="stereo">Stereo (Headset)</option>
+                            </select>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </div>
+                    </div>
+                    <div class="settings-main-divider"></div>
+                </div>
+                <div class="sub-customize-title">Aspect Ratio</div>
+                <div class="settings-list" id="ratio-opts">
+                    <div class="settings-list-item active" data-ratio="contain"><i class="fa-regular fa-circle-dot"></i>
+                        Fit</div>
+                    <div class="settings-list-item" data-ratio="cover"><i class="fa-regular fa-circle"></i> Fill</div>
+                    <div class="settings-list-item" data-ratio="fill"><i class="fa-regular fa-circle"></i> Stretch</div>
+                </div>
+                <div class="settings-list">
+                    <div class="settings-list-item" id="btn-reset-video"><i class="fa-solid fa-rotate-left"></i> Reset
+                        to Default</div>
+                </div>
+            </div>
+            <div class="settings-view" id="settings-view-quality">
+                <div class="settings-view-header">
+                    <button class="settings-back-btn"><i class="fa-solid fa-arrow-left"></i></button>
+                    <span class="settings-view-title">Quality</span>
+                </div>
+                <div class="settings-list" id="quality-opts"></div>
+            </div>
+            <div class="settings-view" id="settings-view-sources">
+                <div id="src-list-view">
+                    <div class="settings-view-subheader">
+                        <button class="svsh-back settings-back-btn"><i class="fa-solid fa-arrow-left"></i></button>
+                        <span class="svsh-title">Sources</span>
+                        <button class="svsh-action" id="src-find-next-btn"><i
+                                class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                    <div id="sources-opts" class="sources-opts-list"></div>
+                </div>
+                <div id="src-detail-view">
+                    <div class="settings-view-subheader">
+                        <button class="svsh-back" id="src-detail-back"><i class="fa-solid fa-arrow-left"></i></button>
+                        <span class="svsh-title" id="src-detail-title">Source</span>
+                        <span></span>
+                    </div>
+                    <div id="src-detail-body" class="src-detail-body-wrap">
+                        <div id="src-loading-state" class="src-state-container" style="display: none;">
+                            <div class="src-loading-dots">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                        </div>
+                        <div id="src-failed-state" class="src-state-container" style="display: none;">
+                            <div class="src-failed-body">
+                                <div class="src-failed-title">Failed to scrape</div>
+                                <div class="src-failed-message">There was an error while trying to find any videos. Try
+                                    a different source?</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="settings-view" id="settings-view-subtitles">
+                <div id="sub-lang-group-view">
+                    <div class="settings-view-subheader">
+                        <button class="svsh-back settings-back-btn"><i class="fa-solid fa-arrow-left"></i></button>
+                        <span class="svsh-title">Subtitles</span>
+                        <button class="svsh-action" id="sub-customize-open-btn">Customize</button>
+                    </div>
+                    <div class="sub-special-list">
+                        <div class="sub-special-row" id="sub-off-row">
+                            <span>Off</span>
+                            <span class="sub-row-check" id="sub-off-check"><i class="fa-solid fa-check"></i></span>
+                        </div>
+                        <div class="sub-special-row" id="sub-upload-row">
+                            <div style="display:flex;align-items:center;gap:12px;">
+                                <i class="fa-solid fa-file-arrow-up" style="font-size:14px;color:var(--white-60);"></i>
+                                <span>Upload Subtitle File</span>
+                            </div>
+                            <i class="fa-solid fa-plus" style="font-size:12px;color:var(--white-45);"></i>
+                        </div>
+                        <input type="file" id="sub-file-input" accept=".srt,.vtt,.sub" style="display:none;">
+                    </div>
+                    <div id="sub-uploaded-section" style="display:none;">
+                        <div class="sub-section-label">Uploaded Subtitles</div>
+                        <div id="sub-uploaded-list" class="sub-uploaded-list"></div>
+                    </div>
+                    <div id="sub-section-divider" class="sub-section-divider"></div>
+                    <div id="sub-entries-inline" class="sub-entries-list" style="display:none;"></div>
+                </div>
+                <div id="sub-custom-view" class="sub-custom-view">
+                    <div class="settings-view-subheader">
+                        <button class="svsh-back" id="sub-custom-back-btn"><i
+                                class="fa-solid fa-arrow-left"></i></button>
+                        <span class="svsh-title">Customize Subtitles</span>
+                        <span></span>
+                    </div>
+                    <div class="sub-presets-section">
+                        <div class="sub-custom-section-lbl">Quick Styles</div>
+                        <div class="sub-presets-grid">
+                            <button class="sub-preset-btn active" data-preset="default">
+                                <div class="sub-preset-preview default-preview">Sample Text</div>
+                                <span>Default</span>
+                            </button>
+                            <button class="sub-preset-btn" data-preset="clean">
+                                <div class="sub-preset-preview clean-preview">Sample Text</div>
+                                <span>Clean</span>
+                            </button>
+                            <button class="sub-preset-btn" data-preset="high-contrast">
+                                <div class="sub-preset-preview high-contrast-preview">Sample Text</div>
+                                <span>High Contrast</span>
+                            </button>
+                            <button class="sub-preset-btn" data-preset="cinema">
+                                <div class="sub-preset-preview cinema-preview">Sample Text</div>
+                                <span>Cinema</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="sub-simple-controls">
+                        <div class="sub-custom-section-lbl">Quick Adjustments</div>
+                        <div class="sub-simple-row">
+                            <div class="sub-simple-control">
+                                <label class="sub-simple-label">Text Size</label>
+                                <div class="sub-size-buttons">
+                                    <button class="sub-size-btn" data-size="small">A</button>
+                                    <button class="sub-size-btn active" data-size="medium">A</button>
+                                    <button class="sub-size-btn" data-size="large">A</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="sub-simple-row">
+                            <div class="sub-simple-control">
+                                <label class="sub-simple-label">Position</label>
+                                <div class="sub-position-buttons">
+                                    <button class="sub-pos-btn" data-pos="bottom">Bottom</button>
+                                    <button class="sub-pos-btn active" data-pos="mid">Middle</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="sub-simple-row">
+                            <div class="sub-simple-control">
+                                <label class="sub-simple-label">Background</label>
+                                <div class="sub-bg-buttons">
+                                    <button class="sub-bg-btn active" data-bg="none">None</button>
+                                    <button class="sub-bg-btn" data-bg="light">Light</button>
+                                    <button class="sub-bg-btn" data-bg="dark">Dark</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="sub-advanced-toggle">
+                        <button id="sub-advanced-btn" class="sub-advanced-toggle-btn">
+                            <span>Advanced Settings</span>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                    </div>
+                    <div id="sub-advanced-content" style="display:none;">
+                        <div class="sub-custom-body">
+                            <div class="sub-custom-row">
+                                <div class="sub-custom-row-left">
+                                    <span class="sub-custom-label">Native video subtitles</span>
+                                    <span class="sub-custom-hint">Broadcast subtitles for native fullscreen and
+                                        PiP</span>
+                                </div>
+                                <div class="settings-toggle" id="native-sub-toggle">
+                                    <div class="settings-toggle-knob"></div>
+                                </div>
+                            </div>
+                            <div class="sub-custom-section">
+                                <span class="sub-custom-section-lbl">Subtitle delay</span>
+                                <input type="range" id="sub-delay-range" class="sub-blue-slider" min="-10" max="10"
+                                    step="0.1" value="0">
+                                <div class="sub-delay-row">
+                                    <button class="sub-delay-side-btn" id="sub-delay-heard"><i
+                                            class="fa-solid fa-chevron-left"></i>
+                                        Heard audio</button>
+                                    <span class="sub-delay-val-badge" id="sub-delay-val">0.0s</span>
+                                    <button class="sub-delay-side-btn" id="sub-delay-saw">Saw caption <i
+                                            class="fa-solid fa-chevron-right"></i></button>
+                                </div>
+                            </div>
+                            <div class="sub-custom-divider"></div>
+                            <div class="sub-custom-row">
+                                <span class="sub-custom-label">Fix capitalization</span>
+                                <div class="settings-toggle" id="sub-fix-caps-toggle">
+                                    <div class="settings-toggle-knob"></div>
+                                </div>
+                            </div>
+                            <div class="sub-custom-divider"></div>
+                            <div class="sub-custom-section">
+                                <span class="sub-custom-section-lbl">Background opacity</span>
+                                <div class="sub-slider-row">
+                                    <input type="range" id="sub-bg-opacity-range" class="sub-blue-slider" min="0"
+                                        max="100" value="75">
+                                    <span class="sub-slider-val" id="sub-bg-opacity-val">75%</span>
+                                </div>
+                            </div>
+                            <div class="sub-custom-divider"></div>
+                            <div class="sub-custom-row">
+                                <div class="sub-custom-row-left">
+                                    <span class="sub-custom-label">Background blur</span>
+                                    <span class="sub-custom-hint">Disabling may fix flickering issues</span>
+                                </div>
+                                <div class="settings-toggle on" id="sub-bg-blur-toggle">
+                                    <div class="settings-toggle-knob"></div>
+                                </div>
+                            </div>
+                            <div class="sub-custom-section">
+                                <span class="sub-custom-section-lbl">Background blur intensity</span>
+                                <div class="sub-slider-row">
+                                    <input type="range" id="sub-blur-intensity-range" class="sub-blue-slider" min="0"
+                                        max="100" value="50">
+                                    <span class="sub-slider-val" id="sub-blur-intensity-val">50%</span>
+                                </div>
+                            </div>
+                            <div class="sub-custom-divider"></div>
+                            <div class="sub-custom-section">
+                                <span class="sub-custom-section-lbl">Text size</span>
+                                <div class="sub-slider-row">
+                                    <input type="range" id="sub-text-size-range" class="sub-blue-slider" min="50"
+                                        max="200" value="100">
+                                    <span class="sub-slider-val" id="sub-text-size-val">100%</span>
+                                </div>
+                            </div>
+                            <div class="sub-custom-divider"></div>
+                            <div class="sub-custom-row sub-custom-row-between">
+                                <span class="sub-custom-label">Text style</span>
+                                <div class="select-wrapper" style="min-width:110px;">
+                                    <select id="sub-text-style-select" class="settings-select">
+                                        <option value="sans">Default</option>
+                                        <option value="serif">Serif</option>
+                                        <option value="mono">Mono</option>
+                                        <option value="cursive">Cursive</option>
+                                    </select>
+                                    <i class="fa-solid fa-chevron-down"></i>
+                                </div>
+                            </div>
+                            <div class="sub-custom-divider"></div>
+                            <div class="sub-custom-row">
+                                <span class="sub-custom-label">Bold text</span>
+                                <div class="settings-toggle" id="sub-bold-toggle">
+                                    <div class="settings-toggle-knob"></div>
+                                </div>
+                            </div>
+                            <div class="sub-custom-divider"></div>
+                            <div class="sub-custom-row sub-custom-row-between">
+                                <span class="sub-custom-label">Color</span>
+                                <div class="sub-color-swatches">
+                                    <button class="sub-swatch sub-swatch-active" data-color="#ffffff"
+                                        style="background:#fff;"><i class="fa-solid fa-check"
+                                            style="color:#000;"></i></button>
+                                    <button class="sub-swatch" data-color="#7b8cde"
+                                        style="background:#7b8cde;"></button>
+                                    <button class="sub-swatch" data-color="#e8d44d"
+                                        style="background:#e8d44d;"></button>
+                                    <button class="sub-swatch" data-color="#4caf50"
+                                        style="background:#4caf50;"></button>
+                                    <button class="sub-swatch sub-swatch-brush" data-color="custom"
+                                        style="background:#2a2a2a;"><i class="fa-solid fa-paint-brush"
+                                            style="color:var(--white-60);font-size:12px;"></i></button>
+                                    <input type="color" id="sub-custom-color-picker" value="#ffffff"
+                                        style="display:none;">
+                                </div>
+                            </div>
+                            <div class="sub-custom-divider"></div>
+                            <div class="sub-custom-row sub-custom-row-between">
+                                <span class="sub-custom-label">Background color</span>
+                                <div class="sub-color-swatches">
+                                    <button class="sub-bg-swatch sub-bg-swatch-active" data-bg-color="transparent"
+                                        style="background:linear-gradient(45deg,#ccc 25%,transparent 25%),linear-gradient(-45deg,#ccc 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#ccc 75%),linear-gradient(-45deg,transparent 75%,#ccc 75%);background-size:10px 10px;background-position:0 0,0 5px,5px -5px,-5px 0px;"><i
+                                            class="fa-solid fa-check" style="color:#000;"></i></button>
+                                    <button class="sub-bg-swatch" data-bg-color="#000000"
+                                        style="background:#000000;"></button>
+                                    <button class="sub-bg-swatch" data-bg-color="#1a1a1a"
+                                        style="background:#1a1a1a;"></button>
+                                    <button class="sub-bg-swatch" data-bg-color="#2d2d2d"
+                                        style="background:#2d2d2d;"></button>
+                                    <button class="sub-bg-swatch sub-bg-swatch-brush" data-bg-color="custom"
+                                        style="background:#2a2a2a;"><i class="fa-solid fa-paint-brush"
+                                            style="color:var(--white-60);font-size:12px;"></i></button>
+                                    <input type="color" id="sub-custom-bg-color-picker" value="#000000"
+                                        style="display:none;">
+                                </div>
+                            </div>
+                            <div class="sub-custom-divider"></div>
+                            <div class="sub-custom-section">
+                                <span class="sub-custom-section-lbl">Overall transparency</span>
+                                <div class="sub-slider-row">
+                                    <input type="range" id="sub-overall-opacity-range" class="sub-blue-slider" min="0"
+                                        max="100" value="100">
+                                    <span class="sub-slider-val" id="sub-overall-opacity-val">100%</span>
+                                </div>
+                            </div>
+                            <div class="sub-custom-divider"></div>
+                            <div class="sub-custom-row sub-custom-row-between">
+                                <span class="sub-custom-label">Text shadow</span>
+                                <div class="select-wrapper" style="min-width:110px;">
+                                    <select id="sub-text-shadow-select" class="settings-select">
+                                        <option value="none">None</option>
+                                        <option value="shadow">Shadow</option>
+                                        <option value="outline">Outline</option>
+                                        <option value="both">Both</option>
+                                    </select>
+                                    <i class="fa-solid fa-chevron-down"></i>
+                                </div>
+                            </div>
+                            <div class="sub-custom-divider"></div>
+                            <div class="sub-custom-row sub-custom-row-between">
+                                <span class="sub-custom-label">Vertical position</span>
+                                <div class="select-wrapper" style="min-width:110px;">
+                                    <select id="sub-pos-select" class="settings-select">
+                                        <option value="bottom">Very Bottom</option>
+                                        <option value="low">Bottom</option>
+                                        <option value="mid">Mid</option>
+                                    </select>
+                                    <i class="fa-solid fa-chevron-down"></i>
+                                </div>
+                            </div>
+                            <div class="settings-list-item" id="sub-custom-reset-btn"><i
+                                    class="fa-solid fa-rotate-left"></i> Reset
+                                to Default</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="settings-view" id="settings-view-watchparty">
+                <div class="settings-view-subheader">
+                    <button class="svsh-back settings-back-btn"><i class="fa-solid fa-arrow-left"></i></button>
+                    <span class="svsh-title">Watch Party</span>
+                    <span></span>
+                </div>
+                <div id="wp-main-view" class="wp-view">
+                    <button id="wp-host-btn" class="wp-btn-primary">Host a Watch Party</button>
+                    <button id="wp-join-btn" class="wp-btn-secondary">Join a Watch Party</button>
+                </div>
+                <div id="wp-join-view" class="wp-view wp-join-view">
+                    <input id="wp-code-input" type="text" placeholder="Enter party code" class="wp-code-input">
+                    <div class="wp-join-actions">
+                        <button id="wp-join-cancel-btn" class="wp-btn-secondary">Cancel</button>
+                        <button id="wp-join-confirm-btn" class="wp-btn-primary">Join</button>
+                    </div>
+                </div>
+                <div id="wp-hosting-view" class="wp-view wp-hosting-view">
+                    <div class="wp-backend-info">
+                        All users must use the same backend server<br>
+                        <span id="wp-backend-label" class="wp-backend-label"></span>
+                    </div>
+                    <div class="wp-hosting-subtitle">Hosting on <span id="wp-backend-name">Vyla</span></div>
+                    <div id="wp-code-display" class="wp-code-display">
+                        <span id="wp-room-code" class="wp-room-code"></span>
+                        <i class="fa-solid fa-copy wp-copy-icon"></i>
+                    </div>
+                    <div class="wp-share-hint">Share this code with friends (click to copy link)</div>
+                    <div class="wp-overlay-row">
+                        <span class="wp-overlay-label">Show status overlay</span>
+                        <div class="settings-toggle" id="wp-overlay-toggle">
+                            <div class="settings-toggle-knob"></div>
+                        </div>
+                    </div>
+                    <div id="wp-members-list" class="wp-members-list"></div>
+                    <button id="wp-reconnect-btn" class="wp-btn-reconnect" style="display:none;">
+                        <i class="fa-solid fa-rotate-right"></i> Reconnect
+                    </button>
+                    <button id="wp-leave-btn" class="wp-btn-leave">Leave Watch Party</button>
+                </div>
+            </div>
+            <div class="settings-view" id="settings-view-segments">
+                <div class="settings-view-subheader">
+                    <button class="svsh-back settings-back-btn"><i class="fa-solid fa-arrow-left"></i></button>
+                    <span class="svsh-title">Skip Segments</span>
+                    <span></span>
+                </div>
+                <div id="seg-content" class="seg-content"></div>
+            </div>
+        </div>
+        <button id="settings-close-btn">Close</button>
+    </div>
+
+    <div id="ep-panel-backdrop"></div>
+    <div id="ep-panel">
+        <div id="ep-panel-season-view">
+            <div class="settings-view-subheader">
+                <button class="svsh-back" id="ep-panel-close"><i class="fa-solid fa-xmark"></i></button>
+                <span class="svsh-title" id="ep-panel-show-title"></span>
+                <span></span>
+            </div>
+            <div id="ep-season-list" class="ep-season-list"></div>
+        </div>
+        <div id="ep-panel-episode-view">
+            <div class="settings-view-subheader">
+                <button class="svsh-back" id="ep-panel-ep-back"><i class="fa-solid fa-arrow-left"></i></button>
+                <span class="svsh-title" id="ep-panel-season-title"></span>
+                <span></span>
+            </div>
+            <div id="ep-panel-ep-list" class="ep-panel-ep-list"></div>
+        </div>
+        <button id="ep-panel-close-btn">Close</button>
+    </div>
+
+    <div id="ep-strip-wrap">
+        <div id="ep-strip-header">
+            <span id="ep-strip-season-label"></span>
+            <button id="ep-strip-season-btn"><i class="fa-solid fa-chevron-down"></i> Change Season</button>
+        </div>
+        <div id="ep-strip" class="ep-strip"></div>
+    </div>
+
+    <div id="ep-strip-season-panel-backdrop"></div>
+    <div id="ep-strip-season-panel">
+        <div class="settings-view-subheader">
+            <button class="svsh-back" id="ep-strip-season-close"><i class="fa-solid fa-xmark"></i></button>
+            <span class="svsh-title" id="ep-strip-show-title2"></span>
+            <span></span>
+        </div>
+        <div id="ep-strip-season-list" class="ep-season-list"></div>
+        <button id="ep-strip-season-close-btn">Close</button>
+    </div>
+    <script src="src/features/vr.js"></script>
+</body>
+
+</html>

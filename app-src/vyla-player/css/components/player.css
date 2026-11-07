@@ -1,0 +1,194 @@
+#player.ui-on,
+#player:not(.ui-on)~* {
+    cursor: default;
+}
+
+video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    opacity: 1;
+    transition: opacity 1s var(--ease-out);
+    position: relative;
+    z-index: 0;
+}
+
+@media (orientation: portrait) {
+    video {
+        object-fit: contain;
+    }
+}
+
+#ambient-glow-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    filter: blur(60px) saturate(1.6) brightness(0.85);
+    transform: scale(1.15);
+    opacity: 0;
+    transition: opacity 0.6s ease;
+    pointer-events: none;
+    will-change: opacity;
+}
+
+#ambient-glow-canvas.active {
+    opacity: 1;
+}
+
+#error-screen {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.6s var(--ease-smooth);
+    padding: var(--space-2xl);
+    text-align: center;
+}
+
+#error-screen.show {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.err-text {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--white-92);
+    letter-spacing: 0.03em;
+}
+
+.err-sub {
+    font-size: 0.825rem;
+    color: var(--white-45);
+    margin-top: var(--space-sm);
+    margin-bottom: var(--space-xs);
+    max-width: 340px;
+    line-height: 1.65;
+}
+
+.err-sub code {
+    border-radius: 5px;
+    padding: 2px 7px;
+    font-size: 12px;
+    color: var(--white-92);
+}
+
+.tap-zone {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 25%;
+    z-index: 5;
+    cursor: pointer;
+    pointer-events: none;
+    transition: background 0.2s ease;
+}
+
+#skip-left {
+    left: 12.5%;
+}
+
+#skip-right {
+    right: 12.5%;
+}
+
+#center-flash {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 1000;
+    gap: 48px;
+}
+
+#center-flash>* {
+    pointer-events: auto;
+}
+
+#center-flash i {
+    font-size: 3.2rem;
+    color: var(--white);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+#player.ui-on #center-flash i {
+    opacity: 1;
+}
+
+#player:not(.ui-on) {
+    cursor: none;
+}
+
+#center-flash i.pop {
+    animation: cPop 0.75s var(--ease-smooth) forwards;
+}
+
+.cf-skip-btn {
+    background: none;
+    border: none;
+    color: var(--white-85);
+    width: auto;
+    height: auto;
+    border-radius: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s var(--ease-out), transform 0.2s var(--ease-smooth);
+    font-size: 1.8rem;
+}
+
+.cf-skip-btn:active {
+    transform: scale(0.88);
+}
+
+#player.ui-on .cf-skip-btn {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+#buffering-spinner {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 15;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+#buffering-spinner.active {
+    opacity: 1;
+}
+
+#buffering-spinner svg {
+    width: 52px;
+    height: 52px;
+    animation: spinnerRotate 0.9s linear infinite;
+}
+
+#buffering-spinner circle {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.9);
+    stroke-width: 3.5;
+    stroke-linecap: round;
+    stroke-dasharray: 100;
+    stroke-dashoffset: 70;
+}

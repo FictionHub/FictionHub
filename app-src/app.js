@@ -1,146 +1,28 @@
-/* ===== Vidflix — movie/TV streaming UI on the Vidking embed API ===== */
+/* ===== FictionHub — movie/TV streaming UI (sources: Vyla SDK) ===== */
 
 const TMDB = "https://api.themoviedb.org/3";
 const IMG = "https://image.tmdb.org/t/p/w300";
 const BACKDROP = "https://image.tmdb.org/t/p/original";
 
-// Multiple embed providers — all keyed by TMDB id. If one has "no source
-// available", the user switches to the next. Atlantic is default (its own
-// hls-based player with built-in subtitles, hosted on its own CDN); the rest
-// are fallbacks.
+// Streaming uses Vyla's own web player (vyla-player/, vendored from
+// https://gitlab.com/vyla-entertainment/player). It runs on this same origin
+// and gets its streams from the Vyla SDK through the local server's /api/*
+// routes; it has its own source picker, subtitles and episode list, so it is
+// the only "server" here. Same origin also lets us read its <video> for exact
+// Continue Watching progress (see watchVylaPlayer below).
+const vylaPlayerUrl = (id, season, episode) => {
+  const q = new URLSearchParams({ id: String(id) });
+  if (season != null) { q.set("season", String(season)); q.set("episode", String(episode || 1)); }
+  return `${location.origin}/vyla-player/index.html?${q}`;
+};
 const SOURCES = [
   {
-    // Our own hls.js player fed by the main-process stream resolver
-    // (hidden window harvests Atlantic's m3u8; playback goes through the
-    // local /__stream proxy). Exact Continue Watching + no ad networks.
-    name: "Native",
-    tracks: true,
-    native: true,
-    movie: () => "", // URL is produced by the resolver, not built here
-    tv: () => "",
-  },
-  {
-    // Atlantic's own embed — bare player page, no third-party embed layer.
-    // Verified working: streams from their hls.lol CDN with captions.
-    name: "Atlantic",
-    movie: (id) => `https://atlantic.st/embed/movie/${id}`,
-    tv: (id, s, e) => `https://atlantic.st/embed/tv/${id}/${s}/${e}`,
-  },
-  {
-    // TouStream's OFFICIAL embed API (toustream.xyz/api) — their raw streams
-    // are scrape-gated (operator asks for Discord partnership instead), but
-    // embedding is explicitly offered. Their page solves its own Turnstile.
-    name: "TouStream",
-    movie: (id) => `https://toustream.xyz/tou/movies/${id}`,
-    tv: (id, s, e) => `https://toustream.xyz/tou/tv/${id}/${s}/${e}`,
-  },
-  {
-    // Low-ad community favorite; emits MEDIA_DATA progress events
-    name: "VidLink",
-    tracks: true,
-    movie: (id) => `https://vidlink.pro/movie/${id}`,
-    tv: (id, s, e) => `https://vidlink.pro/tv/${id}/${s}/${e}`,
-  },
-  {
-    name: "Vidfast",
-    movie: (id) => `https://vidfast.pro/movie/${id}`,
-    tv: (id, s, e) => `https://vidfast.pro/tv/${id}/${s}/${e}`,
-  },
-  {
-    name: "VidRock",
-    movie: (id) => `https://vidrock.net/movie/${id}`,
-    tv: (id, s, e) => `https://vidrock.net/tv/${id}/${s}/${e}`,
-  },
-  {
-    name: "VidZee",
-    movie: (id) => `https://player.vidzee.wtf/embed/movie/${id}`,
-    tv: (id, s, e) => `https://player.vidzee.wtf/embed/tv/${id}/${s}/${e}`,
-  },
-  {
-    // Query-param embed API — strong anime coverage alongside movies/TV
-    name: "RiveStream",
-    movie: (id) => `https://rivestream.ru/embed?type=movie&id=${id}`,
-    tv: (id, s, e) => `https://rivestream.ru/embed?type=tv&id=${id}&season=${s}&episode=${e}`,
-  },
-  {
-    name: "ScreenScape",
-    movie: (id) => `https://screenscape.me/embed?tmdb=${id}&type=movie`,
-    tv: (id, s, e) => `https://screenscape.me/embed?tmdb=${id}&type=tv&s=${s}&e=${e}&lan=eng`,
-  },
-  {
-    // Supports ?progress= resume + nextEpisode/episodeSelector, but has been
-    // unreachable at times — kept as a fallback rather than the default
-    name: "Vidking",
-    tracks: true, // emits PLAYER_EVENT progress; used for the failover detector
-    resume: (url, secs) => `${url}&progress=${secs}`, // jump back to saved position
-    movie: (id, c, a) => `https://www.vidking.net/embed/movie/${id}?color=${c}&autoPlay=${a}`,
-    tv: (id, s, e, c, a) => `https://www.vidking.net/embed/tv/${id}/${s}/${e}?color=${c}&autoPlay=${a}&nextEpisode=true&episodeSelector=true`,
-  },
-  {
-    // vidsrc-style mirror, low-ad
-    name: "Nontongo",
-    movie: (id) => `https://www.nontongo.win/embed/movie/${id}`,
-    tv: (id, s, e) => `https://www.nontongo.win/embed/tv/${id}/${s}/${e}`,
-  },
-  {
-    name: "AutoEmbed",
-    movie: (id) => `https://autoembed.co/movie/tmdb/${id}`,
-    tv: (id, s, e) => `https://autoembed.co/tv/tmdb/${id}-${s}-${e}`,
-  },
-  {
-    name: "AnyEmbed",
-    movie: (id) => `https://anyembed.xyz/embed/tmdb-movie-${id}`,
-    tv: (id, s, e) => `https://anyembed.xyz/embed/tmdb-tv-${id}-${s}-${e}`,
-  },
-  {
-    // Last resort — reliable uptime but heavier on ads than the others
-    name: "MultiEmbed",
-    movie: (id) => `https://multiembed.mov/?video_id=${id}&tmdb=1`,
-    tv: (id, s, e) => `https://multiembed.mov/?video_id=${id}&tmdb=1&s=${s}&e=${e}`,
-  },
-  {
-    // Anime-only — AniList-keyed Rive embed, shown only when playing anime.
-    // AniList numbers episodes continuously across seasons, so use the
-    // absolute episode number (computed in loadEpisodes) when we know it.
-    name: "Rive Anime",
-    animeOnly: true,
-    animeUrl: async (m) => {
-      const ani = await resolveAniListId(m.title, m.season);
-      if (!ani) return null;
-      return `https://rivestream.ru/embed?type=anime&id=${ani}&episode=${m.absEpisode || m.episode}`;
-    },
+    name: "Vyla",
+    tracks: false, // progress comes from watchVylaPlayer, not postMessage
+    movie: (id) => vylaPlayerUrl(id),
+    tv: (id, s, e) => vylaPlayerUrl(id, s, e),
   },
 ];
-
-// Anime-specific embeds key off AniList ids, not TMDB. Resolve TMDB title →
-// AniList id via the public GraphQL API (CORS-enabled, no key). Cached per
-// session. Multi-season TMDB entries map to separate AniList entries, so for
-// season > 1 the search string includes the season first.
-const aniListCache = {};
-async function resolveAniListId(title, season = 1) {
-  const tries = season > 1 ? [`${title} Season ${season}`, `${title} ${season}`, title] : [title];
-  for (const t of tries) {
-    const key = t.toLowerCase().trim();
-    if (!(key in aniListCache)) {
-      try {
-        const r = await fetch("https://graphql.anilist.co", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({
-            query: `query ($s: String) { Media(search: $s, type: ANIME) { id } }`,
-            variables: { s: t },
-          }),
-        });
-        const j = await r.json();
-        aniListCache[key] = j?.data?.Media?.id || null;
-      } catch {
-        aniListCache[key] = null;
-      }
-    }
-    if (aniListCache[key]) return aniListCache[key];
-  }
-  return null;
-}
 let sourceIndex = 0;
 let failoverTimer = null;
 let playbackStarted = false;
@@ -506,8 +388,9 @@ function renderWatching() {
 // Reset watch-view chrome for normal video playback (server tabs + hint).
 function setWatchMode(mode) {
   watchMode = mode;
-  document.getElementById("srcHint").classList.remove("hidden");
-  document.getElementById("sourceTabs").classList.remove("hidden");
+  const single = SOURCES.length <= 1;
+  document.getElementById("srcHint").classList.toggle("hidden", single);
+  document.getElementById("sourceTabs").classList.toggle("hidden", single);
 }
 
 async function renderSearch(q) {
@@ -577,6 +460,7 @@ function exitToBrowse() {
   if (typeof nativeClose === "function") nativeClose();
   const frame = document.getElementById("playerFrame");
   if (frame) frame.src = "";
+  if (typeof vylaWatchTimer !== "undefined") clearInterval(vylaWatchTimer);
   clearTimeout(failoverTimer);
   clearTimeout(videoDlTimer);
   document.getElementById("watchView").classList.add("hidden");
@@ -948,9 +832,6 @@ function touchWatching() {
   store.watching = w;
 }
 
-// Native tabs render our own player into #nativeStage instead of the iframe
-function nativeActiveFor(src) { return !!(src && src.native); }
-
 async function loadIframe() {
   const { type, id, season, episode } = activeMedia;
   let src = SOURCES[sourceIndex];
@@ -960,15 +841,7 @@ async function loadIframe() {
     sourceIndex = 0;
     src = SOURCES[0];
   }
-  if (nativeActiveFor(src)) {
-    touchWatching();    // native progress events arrive a few seconds in
-    nativeClose();      // stop iframe playback + hide the native stage swap-in
-    nativeOpen();
-    renderSourceTabs();
-    refreshVideoDlUi();
-    return;
-  }
-  nativeClose();
+  nativeClose(); // release the offline player if a download was playing
   const color = store.color.replace("#", "");
   const auto = store.autoplay ? "true" : "false";
   touchWatching();
@@ -1006,6 +879,7 @@ async function loadIframe() {
   // so it can block ad hijacks that navigate the whole iframe elsewhere
   window.fictionhub?.setEmbedHost(new URL(url).hostname);
   document.getElementById("playerFrame").src = url;
+  watchVylaPlayer();
   renderSourceTabs();
   armFailover();
   refreshVideoDlUi();
@@ -1038,11 +912,8 @@ function setFailoverNotice(msg) {
 
 function renderSourceTabs() {
   const bar = document.getElementById("sourceTabs");
-  // Use the new source manager's source list if available, fall back to old SOURCES
-  const sources = window.sourceManager?.currentSources?.length
-    ? window.sourceManager.currentSources
-    : SOURCES;
-  const activeIdx = window.sourceManager?.currentIndex ?? sourceIndex;
+  const sources = SOURCES;
+  const activeIdx = sourceIndex;
   bar.innerHTML = sources.map((s, i) => {
     const api = s.api || s;
     if (api.animeOnly && !activeMedia?.isAnime) return "";
@@ -1130,6 +1001,11 @@ window.addEventListener("message", (e) => {
   const prog = extractProgress(payload);
   if (!prog) return;
 
+  applyProgress(prog);
+});
+
+// Fold one progress reading into the title's Continue Watching entry.
+function applyProgress(prog) {
   // any recognized progress event = this server found a source and is playing
   playbackStarted = true;
   clearTimeout(failoverTimer);
@@ -1160,7 +1036,82 @@ window.addEventListener("message", (e) => {
     updated: Date.now(),
   };
   store.watching = w;
-});
+}
+
+/* ---------- Vyla player progress ----------
+   The Vyla player sends no postMessage events, but it runs on our origin, so
+   read its <video> directly. It also navigates itself to the next episode
+   (?season=&episode= in its own URL); follow that so Continue Watching and
+   the episode picker stay on the episode actually playing. */
+let vylaWatchTimer = null;
+let vylaResumeDone = false;
+
+function watchVylaPlayer() {
+  clearInterval(vylaWatchTimer);
+  vylaResumeDone = false;
+  vylaWatchTimer = setInterval(pollVylaPlayer, 2000);
+}
+
+function pollVylaPlayer() {
+  const frame = document.getElementById("playerFrame");
+  if (!activeMedia || !frame || !frame.src || frame.classList.contains("hidden")) {
+    clearInterval(vylaWatchTimer);
+    return;
+  }
+  let win, video;
+  try {
+    win = frame.contentWindow;
+    if (!win || !win.location.pathname.includes("/vyla-player/")) return;
+    video = win.document.querySelector("video");
+  } catch {
+    return; // not same-origin (shouldn't happen) — nothing to read
+  }
+
+  // follow the player's own episode navigation
+  if (activeMedia.type === "tv") {
+    const q = new URLSearchParams(win.location.search);
+    const season = parseInt(q.get("season"), 10), episode = parseInt(q.get("episode"), 10);
+    if (season > 0 && episode > 0 && (season !== activeMedia.season || episode !== activeMedia.episode)) {
+      activeMedia.season = season;
+      activeMedia.episode = episode;
+      vylaResumeDone = true; // a new episode starts from its own position
+      touchWatching();
+      const ss = document.getElementById("seasonSelect"), es = document.getElementById("episodeSelect");
+      if (ss && [...ss.options].some(o => +o.value === season) && +ss.value !== season) {
+        ss.value = String(season);
+        if (typeof loadEpisodes === "function") loadEpisodes().then(() => { if (es) es.value = String(episode); }).catch(() => {});
+      } else if (es && [...es.options].some(o => +o.value === episode)) {
+        es.value = String(episode);
+      }
+      if (typeof refreshVideoDlUi === "function") refreshVideoDlUi();
+    }
+  }
+
+  if (!video || !video.duration || !isFinite(video.duration) || video.readyState < 1) return;
+
+  // Resume from FictionHub's saved position once, unless the player already
+  // resumed (it keeps its own per-title timestamps too).
+  if (!vylaResumeDone) {
+    vylaResumeDone = true;
+    const w = store.watching[activeMedia.type + ":" + activeMedia.id];
+    const sameEp = w && (activeMedia.type !== "tv" || (w.season == activeMedia.season && w.episode == activeMedia.episode));
+    const saved = sameEp ? w.currentTime || 0 : 0;
+    if (saved > 5 && video.currentTime < 5 && saved < video.duration - 10) {
+      try { video.currentTime = saved; } catch {}
+    }
+  }
+
+  if (video.currentTime > 0) {
+    applyProgress({
+      currentTime: video.currentTime,
+      duration: video.duration,
+      progress: (video.currentTime / video.duration) * 100,
+      season: activeMedia.type === "tv" ? activeMedia.season : null,
+      episode: activeMedia.type === "tv" ? activeMedia.episode : null,
+    });
+  }
+}
+
 
 /* ---------- Keyboard shortcuts ---------- */
 document.addEventListener("keydown", (e) => {
@@ -1173,8 +1124,7 @@ document.addEventListener("keydown", (e) => {
   const watchOpen = !document.getElementById("watchView").classList.contains("hidden");
   if (watchOpen && watchMode === "video") {
     if (e.key >= "1" && e.key <= "9") {
-      const src = SOURCES[+e.key - 1];
-      if (src && (!src.animeOnly || activeMedia.isAnime)) { switchSource(+e.key - 1); return; }
+      if (SOURCES[+e.key - 1]) { switchSource(+e.key - 1); return; }
       return;
     }
     if (typeof nativeActive !== "undefined" && nativeActive) {
@@ -1327,278 +1277,12 @@ function bootApp() {
   setAccentVars(store.color);
   showBanner(false); // default key is always available now
   switchView("home");
-  initNewSystems();
 }
-
-// Initialize the new scraper, source manager, and universal player systems
-//
-// Each subsystem is initialized in its own try/catch. They are independent:
-// a failure in the scraper must not prevent the universal player from being
-// created, or the player container stays empty and the user gets a black
-// screen with no clue why. The player is the last step and is the one the
-// user actually sees, so it is initialized even if everything else failed.
-function initNewSystems() {
-  // Initialize scraper (loads registry, starts background scans)
-  if (typeof initScraper === "function") {
-    try {
-      window.scraperAPI = initScraper();
-    } catch (e) {
-      console.error("[app] Scraper init failed:", e);
-    }
-  }
-
-  // Initialize source manager (will be connected when media is selected)
-  if (typeof initSourceManager === "function" && window.scraperAPI) {
-    try {
-      const registry = window.scraperAPI.getRegistry();
-      // Keep the resolver-backed native source in the same source list as the
-      // scraped providers. Without this entry the universal player can never
-      // select the local HLS path, and downloads/native playback silently fall
-      // back to an embed instead.
-      registry.embedAPIs.__native = {
-        name: "Native",
-        type: "native",
-        native: true,
-        source: "builtin",
-      };
-      registry.health.__native = {
-        successRate: 1,
-        lastChecked: Date.now(),
-        consecutiveFailures: 0,
-      };
-      window.sourceManager = initSourceManager(registry, {
-        onSourceChange: onSourceChange,
-        onFailover: onSourceFailover,
-        onError: onSourceError,
-        onPlaybackStart: onSourcePlaybackStart,
-      });
-    } catch (e) {
-      console.error("[app] Source manager init failed:", e);
-    }
-  }
-
-  // Initialize universal player
-  if (typeof initUniversalPlayer === "function") {
-    try {
-      window.universalPlayer = initUniversalPlayer({
-        onPlaybackStart: onPlayerPlaybackStart,
-        onPlaybackEnd: onPlayerPlaybackEnd,
-        onError: onPlayerError,
-        onTimeUpdate: onPlayerTimeUpdate,
-        onNextEpisode: playNextEpisode,
-        onPrevEpisode: playPrevEpisode,
-        onNextSource: onNextSourceRequested,
-      });
-    } catch (e) {
-      console.error("[app] Universal player init failed:", e);
-    }
-  }
-}
-
-// Source manager callbacks
-function onSourceChange(newSource, oldSource) {
-  console.log("[app] Source changed:", newSource?.api?.name, "->", newSource?.api?.name);
-  if (window.universalPlayer && window.loadSource && newSource && activeMedia) {
-    // Load the new source in the universal player
-    const resumePos = getResumePosition();
-    window.loadSource(newSource, activeMedia, { resumePosition: resumePos })
-      .then(() => updateSourceIndicator(newSource))
-      .catch(onSourceError);
-  }
-}
-
-function onSourceFailover() {
-  if (window.sourceManager) {
-    const nextSource = window.sourceManager.failover("Auto-failover");
-    if (nextSource) {
-      onSourceChange(nextSource);
-    }
-  }
-}
-
-function onSourceError(error) {
-  console.error("[app] Source error:", error);
-  setFailoverNotice("Source error: " + (error?.message || error));
-  onSourceFailover();
-}
-
-function onSourcePlaybackStart(source) {
-  console.log("[app] Playback started on:", source?.api?.name);
-  setFailoverNotice("");
-  updateSourceIndicator(source, "playing");
-}
-
-// Universal player callbacks
-function onPlayerPlaybackStart(source) {
-  if (window.sourceManager) window.sourceManager.reportPlaybackStarted();
-  setFailoverNotice("");
-  updateSourceIndicator(source, "playing");
-}
-
-function onPlayerPlaybackEnd() {
-  // Handle next episode auto-play
-  // universal-player.js saves the final position before invoking this hook.
-}
-
-function onPlayerError(error) {
-  console.error("[app] Player error:", error);
-  setFailoverNotice("Playback error: " + (error?.message || error));
-  onSourceFailover();
-}
-
-function onPlayerTimeUpdate(currentTime, duration) {
-  // Update legacy UI elements if needed
-  // The universal player handles its own UI
-}
-
-function onNextSourceRequested() {
-  onSourceFailover();
-}
-
-function updateSourceIndicator(source, status = "connecting") {
-  // Update the source tabs to show active source
-  renderSourceTabs(); // Re-render with new active source
-  // Also update universal player's source indicator
-  if (window.universalPlayer && typeof window.universalPlayer.updateSourceIndicator === "function") {
-    window.universalPlayer.updateSourceIndicator(source.api?.name || "Unknown", status);
-  }
-}
-
-function getResumePosition() {
-  if (!activeMedia) return 0;
-  const key = activeMedia.type + ":" + activeMedia.id;
-  const watching = JSON.parse(localStorage.getItem("fh_watching") || "{}");
-  const entry = watching[key];
-  if (entry && entry.currentTime && entry.currentTime > 5) {
-    // Check if it's the same episode
-    if (activeMedia.type !== "tv" || (entry.season === activeMedia.season && entry.episode === activeMedia.episode)) {
-      return entry.currentTime;
-    }
-  }
-  return 0;
-}
-
-// Override the old loadIframe to use new system
-const originalLoadIframe = loadIframe;
-loadIframe = async function() {
-  if (!activeMedia) return;
-  
-  // Ensure source manager is initialized
-  if (!window.sourceManager && window.scraperAPI) {
-    window.sourceManager = window.initSourceManager(window.scraperAPI.getRegistry(), {
-      onSourceChange: onSourceChange,
-      onFailover: onSourceFailover,
-      onError: onSourceError,
-      onPlaybackStart: onSourcePlaybackStart,
-    });
-  }
-  
-  // Set active media in source manager
-  if (window.sourceManager) {
-    const source = window.setActiveMedia(activeMedia, window.scraperAPI.getRegistry());
-    if (source) {
-      // Load in universal player
-      if (window.loadSource) {
-        const resumePos = getResumePosition();
-        window.startPlaybackMonitor();
-        try {
-          await window.loadSource(source, activeMedia, { resumePosition: resumePos });
-          updateSourceIndicator(source);
-        } catch (e) {
-          onSourceError(e);
-        }
-      }
-      return;
-    }
-  }
-  
-  // Fallback to old system if new system fails
-  return originalLoadIframe.apply(this, arguments);
-};
-
-// Override switchSource to use new system
-const originalSwitchSource = switchSource;
-switchSource = function(i) {
-  if (window.selectSource) {
-    const newSource = window.selectSource(i);
-    if (newSource && window.loadSource) {
-      const resumePos = getResumePosition();
-      window.startPlaybackMonitor();
-      window.loadSource(newSource, activeMedia, { resumePosition: resumePos })
-        .then(() => updateSourceIndicator(newSource))
-        .catch(onSourceError);
-    }
-    // Update legacy sourceIndex for compatibility
-    sourceIndex = i;
-    if (activeMedia) {
-      const ls = store.lastServer;
-      ls[activeMedia.type + ":" + activeMedia.id] = i;
-      store.lastServer = ls;
-    }
-    return;
-  }
-  return originalSwitchSource.apply(this, arguments);
-};
-
-// Override exitToBrowse to cleanup player
-const originalExitToBrowse = exitToBrowse;
-exitToBrowse = function() {
-  if (window.destroyPlayer) {
-    window.destroyPlayer();
-  }
-  if (window.sourceManager) {
-    window.sourceManager.playbackStarted = false;
-    clearTimeout(window.sourceManager.playbackTimer);
-  }
-  return originalExitToBrowse.apply(this, arguments);
-};
-
-// Override nativeOpen/nativePlayLocal to use universal player when possible
-const originalNativeOpen = nativeOpen;
-nativeOpen = async function() {
-  if (window.loadSource && window.getAllSources && activeMedia) {
-    // Get the native source
-    const nativeSource = window.getAllSources().find(s => s.api?.native);
-    if (nativeSource) {
-      return window.loadSource(nativeSource, activeMedia, { 
-        resumePosition: getResumePosition(),
-        forceNative: true 
-      });
-    }
-  }
-  return originalNativeOpen.apply(this, arguments);
-};
-
-const originalNativePlayLocal = nativePlayLocal;
-nativePlayLocal = function(playlistUrl) {
-  if (window.loadSource && activeMedia) {
-    // Create a pseudo-source for local playback
-    const localSource = {
-      key: "local",
-      api: { name: "Local Download", native: true },
-      url: playlistUrl,
-    };
-    return window.loadSource(localSource, activeMedia, { 
-      resumePosition: getResumePosition(),
-      forceNative: true 
-    });
-  }
-  return originalNativePlayLocal.apply(this, arguments);
-};
-
-// Add global functions for UI
-window.switchSource = switchSource;
-window.loadIframe = loadIframe;
-window.exitToBrowse = exitToBrowse;
-window.nativeOpen = nativeOpen;
-window.nativePlayLocal = nativePlayLocal;
 
 // Expose for debugging
 window.fhDebug = {
-  scraper: () => window.scraperAPI,
-  sourceManager: () => window.sourceManager,
-  universalPlayer: () => window.universalPlayer,
   activeMedia: () => activeMedia,
+  vylaPlayer: () => document.getElementById("playerFrame")?.contentWindow,
 };
 
 /* ---------- Init ---------- */

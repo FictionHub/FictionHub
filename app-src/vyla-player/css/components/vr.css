@@ -1,0 +1,51 @@
+.vr-mobile-only {
+    display: none;
+}
+
+@media (max-width: 767px),
+(pointer: coarse) and (max-width: 900px) {
+    .vr-mobile-only {
+        display: flex;
+    }
+
+    .quality-auto-sub.vr-mobile-only {
+        display: block;
+    }
+}
+
+#vr-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    display: none;
+    z-index: 16;
+    background: #000;
+    touch-action: none;
+}
+
+#vr-permission-btn {
+    position: fixed;
+    inset: 0;
+    z-index: 21;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: var(--black-70);
+}
+
+#vr-permission-btn button {
+    background: var(--white-92);
+    color: #000;
+    border: none;
+    border-radius: var(--menu-radius);
+    padding: 14px 22px;
+    font-size: 15px;
+    font-weight: 600;
+    font-family: var(--font);
+}
+
+#vr-permission-btn button {
+    cursor: pointer;
+}

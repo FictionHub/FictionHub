@@ -195,30 +195,28 @@ public class NodeJSServerPlugin extends Plugin {
             Log.d(TAG, "Created server directory: " + destDir.getAbsolutePath());
         }
 
-        // Copy server.js and all dependencies from assets
+        // Copy server.js and everything it needs (including node_modules/,
+        // which holds the Vyla SDK) from assets, recursively.
         String[] files = getContext().getAssets().list("server");
         if (files != null && files.length > 0) {
-            Log.d(TAG, "Found " + files.length + " files in assets/server");
-            for (String file : files) {
-                copyAssetFile("server/" + file, new File(destDir, file));
-            }
+            Log.d(TAG, "Found " + files.length + " entries in assets/server");
+            copyAssetDir("server", destDir);
         } else {
             Log.w(TAG, "No files found in assets/server");
         }
+    }
 
-        // Also copy node_modules if present in assets
-        String[] nodeModulesFiles = getContext().getAssets().list("server/node_modules");
-        if (nodeModulesFiles != null) {
-            File nodeModulesDest = new File(destDir, "node_modules");
-            if (!nodeModulesDest.exists()) {
-                nodeModulesDest.mkdirs();
-            }
-            for (String file : nodeModulesFiles) {
-                copyAssetFile("server/node_modules/" + file, new File(nodeModulesDest, file));
-            }
-            Log.d(TAG, "Copied node_modules");
-        } else {
-            Log.w(TAG, "No node_modules found in assets");
+    // AssetManager.list() returns the children of a directory and an empty
+    // array for a file, so recurse on anything that has children.
+    private void copyAssetDir(String assetPath, File destDir) throws Exception {
+        String[] children = getContext().getAssets().list(assetPath);
+        if (children == null || children.length == 0) {
+            copyAssetFile(assetPath, destDir);
+            return;
+        }
+        if (!destDir.exists()) destDir.mkdirs();
+        for (String child : children) {
+            copyAssetDir(assetPath + "/" + child, new File(destDir, child));
         }
     }
 

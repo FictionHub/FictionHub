@@ -1,0 +1,28 @@
+#subtitle-display {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 10%;
+    z-index: 19;
+    pointer-events: none;
+    text-align: center;
+    padding: 0 5%;
+}
+
+#subtitle-text {
+    display: inline-block;
+    max-width: 90%;
+    font-size: 18px;
+    font-weight: 500;
+    color: #fff;
+    line-height: 1.55;
+    border-radius: 4px;
+    white-space: pre-line;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85), 0 1px 3px rgba(0, 0, 0, 0.9);
+    transition: background 0.15s ease, padding 0.15s ease;
+}
+
+#subtitle-text:empty {
+    background: transparent !important;
+    padding: 0 !important;
+}

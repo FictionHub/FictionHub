@@ -1,78 +1,15 @@
-/* ===== Native player — our own hls.js player for resolved streams =====
-   Replaces the embed <iframe> when a "Native" server tab is active. The
-   stream comes from the main-process resolver (hidden window harvesting an
-   upstream m3u8) and is played through the local proxy (server.js
-   /__stream/*), so no CORS/hotlink problems. Because WE hold the video
-   element, Continue Watching gets exact currentTime/duration for native
-   playback — and resume seeks back to the saved position. */
+/* ===== Offline player — our own hls.js player for downloaded titles =====
+   Streaming uses Vyla's player (vyla-player/, in the #playerFrame iframe).
+   This one only plays downloads: the local HLS playlist + segments the
+   server wrote under VIDEO_DIR (/__video/playlist/<key>). Because WE hold
+   the video element, Continue Watching gets exact currentTime/duration and
+   resume seeks back to the saved position. */
 
 let nativeHls = null;          // hls.js instance
 let nativeActive = false;      // is the native player currently shown
 let nativeProgressTimer = null;
-let nativeResolveToken = 0;    // guards against overlapping resolves (fast server/episode switching)
 
 const nEl = (id) => document.getElementById(id);
-
-async function nativeOpen() {
-  nativeTeardown(false); // bumps the token, invalidating any prior resolve
-  const token = ++nativeResolveToken;
-  nativeActive = true;
-
-  nEl("playerFrame").classList.add("hidden");
-  const stage = nEl("nativeStage");
-  stage.classList.remove("hidden");
-  nEl("nativeNotice").textContent = "Resolving stream…";
-  nEl("nativeNotice").classList.remove("hidden");
-
-  const { type, id, season, episode } = activeMedia;
-  let resolved = null;
-  try {
-      const r = await fetch(`/__stream/resolve?kind=${type}&id=${id}&season=${season}&episode=${episode}`);
-    if (r.ok) resolved = await r.json();
-  } catch (e) {
-    resolved = null;
-  }
-  if (token !== nativeResolveToken) return; // user switched away mid-resolve
-
-  if (!resolved) {
-    nativeFail("Couldn't resolve a stream on this server — switching…");
-    return;
-  }
-
-  const url = `/__stream/m3u8?u=${encodeURIComponent(resolved.m3u8)}&r=${encodeURIComponent(resolved.referer || "")}`;
-  const video = nEl("nativeVideo");
-  try {
-    if (window.Hls && Hls.isSupported()) {
-      nativeHls = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 90 });
-      nativeHls.loadSource(url);
-      nativeHls.attachMedia(video);
-      nativeHls.on(Hls.Events.ERROR, (_e, data) => {
-        console.log("[native] hls error:", data.type + "/" + data.details, "fatal=" + data.fatal, data.response ? (data.response.code + " " + (data.response.url || "").slice(0, 80)) : "");
-        if (data.fatal) nativeFail("Playback error (" + data.type + ") — switching servers…");
-      });
-      nativeHls.on(Hls.Events.MANIFEST_LOADING, () => console.log("[native] manifest loading"));
-      nativeHls.on(Hls.Events.MANIFEST_LOADED, () => console.log("[native] manifest loaded"));
-      nativeHls.on(Hls.Events.MEDIA_ATTACHED, () => console.log("[native] media attached"));
-      nativeHls.on(Hls.Events.MANIFEST_PARSED, () => {
-        nativeFillQuality();
-        nativeMaybeResume();
-        armFailover(); // count the 14s no-playback window from manifest, not resolve
-        video.play().catch(() => {});
-      });
-    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = url;
-      video.addEventListener("loadedmetadata", () => { armFailover(); nativeMaybeResume(); video.play().catch(() => {}); }, { once: true });
-    } else {
-      nativeFail("This browser can't play HLS — switching servers…");
-      return;
-    }
-  } catch (e) {
-    nativeFail("Player error: " + e.message);
-    return;
-  }
-
-  nEl("nativeNotice").classList.add("hidden");
-}
 
 // Play a downloaded title straight from disk: the local m3u8 + segments (and
 // any AES-128 keys) we stored under VIDEO_DIR, served by the local server on
@@ -80,7 +17,11 @@ async function nativeOpen() {
 function nativePlayLocal(playlistUrl) {
   nativeTeardown(false);
   nativeActive = true;
-  nEl("playerFrame").classList.add("hidden");
+  // stop the streaming player, or it keeps playing behind the download
+  const frame = nEl("playerFrame");
+  frame.src = "";
+  frame.classList.add("hidden");
+  if (typeof vylaWatchTimer !== "undefined") clearInterval(vylaWatchTimer);
   const stage = nEl("nativeStage");
   stage.classList.remove("hidden");
   if (typeof setFailoverNotice === "function") setFailoverNotice("");
@@ -118,20 +59,6 @@ function nativePlayLocal(playlistUrl) {
   nativeBindControls();
 }
 
-function nativeFail(msg) {
-  if (!nativeActive) return;
-  if (sourceIndex < SOURCES.length - 1) {
-    setFailoverNotice(msg);
-    switchSource(sourceIndex + 1);
-  } else {
-    setFailoverNotice("No source found on any server for this title.");
-    nEl("nativeNotice").textContent = msg;
-    nEl("nativeNotice").classList.remove("hidden");
-  }
-}
-
-// Seek to the saved position when resuming the same movie/episode — the
-// cross-server resume the embed providers could only sometimes do.
 function nativeMaybeResume() {
   const w = store.watching[activeMedia.type + ":" + activeMedia.id];
   const sameEp = w && (activeMedia.type !== "tv" || (w.season == activeMedia.season && w.episode == activeMedia.episode));
@@ -141,7 +68,6 @@ function nativeMaybeResume() {
 }
 
 function nativeTeardown(hideStage = true) {
-  nativeResolveToken++;
   clearTimeout(nativeProgressTimer);
   if (nativeHls) { try { nativeHls.destroy(); } catch {} nativeHls = null; }
   const video = nEl("nativeVideo");

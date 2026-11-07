@@ -4,16 +4,20 @@
   "description": "FictionHub — local movies, TV, anime & manga app",
   "main": "electron-main.js",
   "dependencies": {
-    "electron-updater": "^6.8.9",
-    "@capacitor/core": "^8.0.0",
     "@capacitor/android": "^8.0.0",
-    "@capacitor/cli": "^8.0.0"
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@vyla-entertainment/sdk": "1.25.0",
+    "electron-updater": "^6.8.9"
   },
   "build": {
     "appId": "com.fictionhub.app",
     "productName": "FictionHub",
     "electronVersion": "31.7.7",
     "npmRebuild": false,
+    "asarUnpack": [
+      "node_modules/koffi/**"
+    ],
     "files": [
       "**/*",
       "!build${/*}",

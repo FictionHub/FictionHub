@@ -1,0 +1,221 @@
+.wp-view {
+    display: none;
+    flex-direction: column;
+    flex: 1;
+    padding: var(--space-lg) var(--space-lg) var(--space-sm);
+}
+
+#wp-main-view {
+    display: flex;
+}
+
+.wp-btn-primary {
+    width: 100%;
+    padding: 15px;
+    border-radius: var(--space-md);
+    background: var(--white-85);
+    color: var(--black-85);
+    font-family: var(--font);
+    font-size: 15px;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    margin-bottom: var(--space-md);
+    transition: background 0.18s;
+}
+
+.wp-btn-primary:hover {
+    background: var(--white-92);
+}
+
+.wp-btn-secondary {
+    width: 100%;
+    padding: 15px;
+    border-radius: var(--space-md);
+    color: var(--white-92);
+    background-color: var(--white-08);
+    font-family: var(--font);
+    font-size: 15px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    margin-bottom: var(--space-xl);
+    transition: background 0.18s;
+}
+
+.wp-btn-secondary:hover {
+    background-color: var(--white-03);
+}
+
+.wp-join-view {
+    padding: var(--space-lg);
+}
+
+.wp-code-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: var(--space-lg);
+    border-radius: var(--space-md);
+    background: var(--white-08);
+    color: var(--white);
+    font-family: var(--font);
+    font-size: 16px;
+    font-weight: 600;
+    border: none;
+    text-align: center;
+    letter-spacing: 0.1em;
+    margin-bottom: var(--space-md);
+    outline: none;
+    transition: background 0.18s;
+}
+
+.wp-code-input:focus {
+    background: var(--white-12);
+}
+
+.wp-join-actions {
+    display: flex;
+    gap: var(--space-md);
+}
+
+.wp-join-actions .wp-btn-secondary {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.wp-join-actions .wp-btn-primary {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.wp-hosting-view {
+    padding: var(--space-lg);
+}
+
+.wp-backend-info {
+    backdrop-filter: blur(10px);
+    
+    border-radius: var(--space-md);
+    padding: var(--space-md) var(--space-lg);
+    font-size: 12px;
+    color: var(--white);
+    text-align: center;
+    margin-bottom: var(--space-md);
+    line-height: 1.55;
+}
+
+.wp-backend-label {
+    color: var(--white);
+    font-size: 11px;
+}
+
+.wp-hosting-subtitle {
+    text-align: center;
+    font-size: 14px;
+    color: var(--white-45);
+    margin-bottom: var(--space-sm);
+}
+
+.wp-code-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-md);
+    background: var(--white-03);
+    border-radius: var(--space-md);
+    padding: var(--space-lg);
+    margin-bottom: var(--space-sm);
+    cursor: pointer;
+    transition: background 0.18s;
+    color: var(--white);
+}
+
+.wp-code-display:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.wp-room-code {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--white);
+    letter-spacing: 0.12em;
+}
+
+.wp-copy-icon {
+    font-size: 13px;
+    color: var(--white-22);
+}
+
+.wp-share-hint {
+    font-size: 12px;
+    color: var(--white-22);
+    text-align: center;
+    margin-bottom: var(--space-lg);
+}
+
+.wp-overlay-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--space-md) 0;
+    border-top: 1px solid var(--white-06);
+    margin-bottom: var(--space-sm);
+}
+
+.wp-overlay-label {
+    font-size: 14px;
+    color: var(--white-85);
+    font-weight: 500;
+}
+
+.wp-members-list {
+    font-size: 13px;
+    color: var(--white-45);
+    margin-bottom: var(--space-lg);
+    min-height: 18px;
+    text-align: center;
+}
+
+.wp-btn-leave {
+    width: 100%;
+    padding: 15px;
+    border-radius: var(--space-md);
+    background: rgba(160, 25, 40, 0.75);
+    color: var(--white);
+    font-family: var(--font);
+    font-size: 15px;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    transition: background 0.18s;
+}
+
+.wp-btn-leave:hover {
+    background: rgba(180, 30, 45, 0.85);
+}
+
+.wp-btn-reconnect {
+    width: 100%;
+    padding: 15px;
+    border-radius: var(--space-md);
+    background: var(--white);
+    color: var(--black);
+    border: none;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.18s;
+    margin-bottom: var(--space-md);
+}
+
+.wp-btn-reconnect:hover {
+    background: rgba(76, 175, 80, 0.85);
+}
+
+.wp-btn-reconnect i {
+    font-size: 12px;
+}

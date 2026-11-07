@@ -1,0 +1,23 @@
+@import 'base/typography.css';
+@import 'base/variables.css';
+@import 'base/reset.css';
+
+@import 'utils/animations.css';
+
+@import 'components/loader.css';
+@import 'components/player.css';
+@import 'components/vr.css';
+@import 'components/controls.css';
+@import 'components/title-bar.css';
+@import 'components/subtitle-display.css';
+@import 'components/toast.css';
+
+@import 'views/episodes-panel.css';
+@import 'views/settings-panel.css';
+@import 'views/sources.css';
+@import 'views/downloads.css';
+@import 'views/subtitles-settings.css';
+@import 'views/watch-party.css';
+@import 'views/segments.css';
+
+@import 'embed/main.css';
